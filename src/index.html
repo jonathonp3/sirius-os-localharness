@@ -59,7 +59,7 @@ textarea::placeholder { color:var(--muted); opacity:1; }
 #spell.active { background:var(--accent); color:#08111f; }
 header select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px; }
 form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; background:var(--panel); }
-#editor { position:relative; flex:1; display:flex; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
+#editor { position:relative; flex:1; display:flex; font-size:16px; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
 #editor:focus-within { border-color:var(--accent); }
 #editor textarea { position:relative; z-index:1; flex:1; resize:none; background:transparent; color:var(--text); border:0; padding:10px; font:inherit; line-height:1.5; min-height:44px; max-height:180px; white-space:pre-wrap; overflow-wrap:break-word; scrollbar-width:none; }
 #editor textarea::-webkit-scrollbar { display:none; }
@@ -69,6 +69,8 @@ form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px;
 #spell-menu button { display:block; width:100%; text-align:left; background:none; color:var(--text); border:0; border-radius:4px; padding:5px 8px; cursor:pointer; }
 #spell-menu button:hover { background:var(--bg); }
 #spell-menu button:disabled { opacity:.45; cursor:default; }
+.emoji-grid { display:grid; grid-template-columns:repeat(8, 32px); gap:2px; max-height:220px; overflow:auto; padding:4px; }
+#spell-menu .emoji-grid button { width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:19px; padding:0; }
 .spell-menu-sep { height:1px; background:var(--border); margin:4px 2px; }
 .spell-menu-title { font-size:11px; color:var(--muted); padding:3px 8px; }
 .spell-menu-empty { font-size:12px; color:var(--muted); padding:4px 8px; }
@@ -323,6 +325,36 @@ async function writeClipboard(text) {
   }
 }
 
+function showEmojiPicker(start, end, x, y) {
+  if (!spellMenu) return;
+  spellMenu.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'spell-menu-title';
+  title.textContent = 'Insert emoji';
+  spellMenu.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'emoji-grid';
+  const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😎','🤔','🤨','😐','😑','😶','🙄','😏','😣','😥','😮','🤐','😯','😪','😫','🥱','😴','😌','😛','😜','🤪','😝','🤗','🤭','🫢','🫣','🤫','🫡','😬','😯','😦','😧','😨','😰','😥','😲','🥺','😢','😭','😱','😖','😞','😓','😩','😤','😡','😠','🤬','😈','👿','💀','💩','🤡','👻','👽','🤖','😺','😸','😹','😻','😼','😽','🙀','😿','😾'];
+  emojis.forEach((emoji) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = emoji;
+    button.addEventListener('click', () => {
+      promptEl.setRangeText(emoji, start, end, 'end');
+      promptEl.dispatchEvent(new Event('input'));
+      hideSpellMenu();
+      promptEl.focus();
+    });
+    grid.appendChild(button);
+  });
+  spellMenu.appendChild(grid);
+  const width = spellMenu.offsetWidth || 280;
+  const height = spellMenu.offsetHeight || 300;
+  spellMenu.style.left = Math.max(8, Math.min(x, window.innerWidth - width - 8)) + 'px';
+  spellMenu.style.top = Math.max(8, Math.min(y, window.innerHeight - height - 8)) + 'px';
+  spellMenuOpenedAt = Date.now();
+}
+
 function showContextMenu(x, y, spelling) {
   if (!spellMenu) return;
   if (spellMenu.parentElement !== document.body) document.body.appendChild(spellMenu);
@@ -383,6 +415,12 @@ function showContextMenu(x, y, spelling) {
     promptEl.select();
     promptEl.focus();
   });
+  menuSeparator();
+  const emojiButton = document.createElement('button');
+  emojiButton.type = 'button';
+  emojiButton.textContent = 'Insert emoji';
+  emojiButton.addEventListener('click', () => showEmojiPicker(start, end, x, y));
+  spellMenu.appendChild(emojiButton);
 
   spellMenu.removeAttribute('hidden');
   spellMenu.style.position = 'fixed';
