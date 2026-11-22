@@ -322,7 +322,10 @@ impl ToolSet {
                 command = command.replace(&format!("{{{key}}}"), &shell_quote(&text));
             }
         }
-        let mut process = if plugin.sandbox {
+        // Nested bwrap is denied inside the Flatpak sandbox; the Flatpak
+        // itself is the isolation boundary there.
+        let use_bwrap = plugin.sandbox && std::env::var_os("FLATPAK_ID").is_none();
+        let mut process = if use_bwrap {
             let mut sandbox = tokio::process::Command::new("bwrap");
             sandbox
                 .arg("--ro-bind").arg("/usr").arg("/usr")

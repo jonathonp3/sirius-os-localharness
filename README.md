@@ -312,7 +312,9 @@ Local build (needs `flatpak-builder` + SDK):
 ```
 
 `--open` detects `FLATPAK_ID` and uses `flatpak-spawn --host xdg-open`, so the
-UI opens in the host browser while the host stays sandboxed. Flathub remains
+UI opens in the host browser while the host stays sandboxed. Nested `bwrap` is
+not permitted inside Flatpak, so plugin commands run directly inside the
+Flatpak sandbox there (on the host they still use `bwrap`). Flathub remains
 optional; see `packaging/flatpak/FLATHUB.md`.
 
 ## Safety
