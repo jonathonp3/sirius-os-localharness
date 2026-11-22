@@ -1,9 +1,9 @@
 //! HTTP + SSE host. The browser client consumes the same agent loop as the CLI.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
@@ -22,7 +22,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::agent::{self, EventSink};
 use crate::approval::{self, ApprovalRequest, Approver};
-use crate::session::Session;
+use crate::session::{self, Session};
 
 const INDEX: &str = include_str!("index.html");
 const MARKDOWN_JS: &str = include_str!("assets/markdown-it.min.js");
@@ -43,6 +43,8 @@ struct AppState {
     queued: AtomicUsize,
     pending_approvals: Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>,
     auto_approve: bool,
+    session_lock: Arc<Mutex<()>>,
+    active_sessions: Arc<StdMutex<HashSet<String>>>,
 }
 
 pub async fn run(
@@ -68,12 +70,19 @@ pub async fn run(
         queued: AtomicUsize::new(0),
         pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         auto_approve,
+        session_lock: Arc::new(Mutex::new(())),
+        active_sessions: Arc::new(StdMutex::new(HashSet::new())),
     });
     let app = Router::new()
         .route("/", get(index))
         .route("/assets/{file}", get(asset))
         .route("/api/health", get(health))
         .route("/api/models", get(models))
+        .route("/api/sessions", get(list_sessions))
+        .route(
+            "/api/sessions/{id}",
+            get(get_session).patch(patch_session).delete(delete_session),
+        )
         .route("/api/chat", post(chat))
         .route("/api/approval", post(approval))
         .with_state(state);
@@ -158,6 +167,150 @@ async fn models(
     }
 }
 
+async fn list_sessions(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let _guard = state.session_lock.lock().await;
+    match session::list_sessions(&state.data_dir).await {
+        Ok((sessions, _)) => Json(json!({ "sessions": sessions })).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("{error:#}") })),
+        )
+            .into_response(),
+    }
+}
+
+async fn get_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let session = match Session::open(&state.data_dir, &id).await {
+        Ok(session) => session,
+        Err(error) => {
+            return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("{error:#}") }))).into_response()
+        }
+    };
+    let index = match session::SessionIndex::load(&state.data_dir).await {
+        Ok(index) => index,
+        Err(error) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response()
+        }
+    };
+    let summary = match session.summary(&state.data_dir, &index).await {
+        Ok(summary) => summary,
+        Err(error) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response()
+        }
+    };
+    let messages = match session.load_messages().await {
+        Ok(messages) => messages,
+        Err(error) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response()
+        }
+    };
+    Json(json!({ "session": summary, "messages": messages })).into_response()
+}
+
+async fn patch_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<PatchSessionBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let _guard = state.session_lock.lock().await;
+    let session = match Session::open(&state.data_dir, &id).await {
+        Ok(session) => session,
+        Err(error) => {
+            return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("{error:#}") }))).into_response()
+        }
+    };
+    let mut index = match session::SessionIndex::load(&state.data_dir).await {
+        Ok(index) => index,
+        Err(error) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response()
+        }
+    };
+    let mut meta = index.sessions.remove(&session.id).unwrap_or_default();
+    if let Some(title) = body.title {
+        let title: String = title.trim().chars().take(120).collect();
+        meta.title = if title.is_empty() { None } else { Some(title) };
+    }
+    if let Some(pinned) = body.pinned {
+        meta.pinned = pinned;
+    }
+    index.sessions.insert(session.id.clone(), meta);
+    if let Err(error) = index.save(&state.data_dir).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response();
+    }
+    match session.summary(&state.data_dir, &index).await {
+        Ok(summary) => Json(json!({ "session": summary })).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
+}
+
+async fn delete_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let session = match Session::open(&state.data_dir, &id).await {
+        Ok(session) => session,
+        Err(error) => {
+            return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("{error:#}") }))).into_response()
+        }
+    };
+    let active = state
+        .active_sessions
+        .lock()
+        .map(|active| active.contains(&session.id))
+        .unwrap_or(true);
+    if active {
+        return (StatusCode::CONFLICT, Json(json!({ "error": "session is running" }))).into_response();
+    }
+    let _guard = state.session_lock.lock().await;
+    let mut index = match session::SessionIndex::load(&state.data_dir).await {
+        Ok(index) => index,
+        Err(error) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response()
+        }
+    };
+    if let Err(error) = session.trash(&state.data_dir).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response();
+    }
+    index.sessions.remove(&session.id);
+    if let Err(error) = index.save(&state.data_dir).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response();
+    }
+    StatusCode::NO_CONTENT.into_response()
+}
+
+#[derive(Deserialize)]
+struct PatchSessionBody {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    pinned: Option<bool>,
+}
+
 async fn chat(
     State(state): State<Arc<AppState>>,
     Query(query): Query<AuthQuery>,
@@ -185,10 +338,38 @@ async fn chat(
             eprintln!("[chat] cancelled while queued");
             return;
         }
-        let session = match Session::create(&task_state.data_dir, &task_state.config.model).await {
-            Ok(session) => session,
-            Err(error) => {
-                let _ = tx.send(SseEvent::Error { message: format!("{error:#}") });
+        let (session, history) = match body.session.as_deref() {
+            Some(id) => {
+                let session = match Session::open(&task_state.data_dir, id).await {
+                    Ok(session) => session,
+                    Err(error) => {
+                        let _ = tx.send(SseEvent::Error { message: format!("{error:#}") });
+                        return;
+                    }
+                };
+                let history = match session.load_messages().await {
+                    Ok(messages) => messages,
+                    Err(error) => {
+                        let _ = tx.send(SseEvent::Error { message: format!("{error:#}") });
+                        return;
+                    }
+                };
+                (session, history)
+            }
+            None => match Session::create(&task_state.data_dir, &task_state.config.model).await {
+                Ok(session) => (session, Vec::new()),
+                Err(error) => {
+                    let _ = tx.send(SseEvent::Error { message: format!("{error:#}") });
+                    return;
+                }
+            },
+        };
+        let _active = match ActiveSession::acquire(task_state.active_sessions.clone(), &session.id) {
+            Some(active) => active,
+            None => {
+                let _ = tx.send(SseEvent::Error {
+                    message: "this session is already running".to_string(),
+                });
                 return;
             }
         };
@@ -205,7 +386,7 @@ async fn chat(
             })
         };
         let mut sink = ChannelSink { tx: tx.clone() };
-        match agent::run(config, &session, body.prompt.as_str(), Vec::new(), &mut sink).await {
+        match agent::run(config, &session, body.prompt.as_str(), history, &mut sink).await {
             Ok(outcome) => {
                 let usage = outcome.usage;
                 let cached_tokens = usage
@@ -309,6 +490,8 @@ struct AuthQuery {
 #[derive(Deserialize)]
 struct ChatBody {
     prompt: String,
+    #[serde(default)]
+    session: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -318,6 +501,7 @@ struct ApprovalBody {
 }
 
 enum SseEvent {
+    Session(String),
     Queued { position: usize, slots: usize },
     Token(String),
     Step(usize),
@@ -331,6 +515,9 @@ enum SseEvent {
 
 fn to_event(event: SseEvent) -> Event {
     match event {
+        SseEvent::Session(session) => Event::default()
+            .event("session")
+            .data(json!({ "session": session }).to_string()),
         SseEvent::Queued { position, slots } => Event::default().event("queued").data(json!({ "position": position, "slots": slots }).to_string()),
         SseEvent::Token(text) => Event::default().event("token").data(json!({ "text": text }).to_string()),
         SseEvent::Step(step) => Event::default().event("step").data(json!({ "step": step }).to_string()),
@@ -358,6 +545,32 @@ fn to_event(event: SseEvent) -> Event {
         SseEvent::Error { message } => Event::default()
             .event("error")
             .data(json!({ "message": message }).to_string()),
+    }
+}
+
+struct ActiveSession {
+    id: String,
+    set: Arc<StdMutex<HashSet<String>>>,
+}
+
+impl ActiveSession {
+    fn acquire(set: Arc<StdMutex<HashSet<String>>>, id: &str) -> Option<Self> {
+        let inserted = {
+            let mut active = set.lock().ok()?;
+            active.insert(id.to_string())
+        };
+        if !inserted {
+            return None;
+        }
+        Some(Self { id: id.to_string(), set })
+    }
+}
+
+impl Drop for ActiveSession {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.set.lock() {
+            active.remove(&self.id);
+        }
     }
 }
 
@@ -407,6 +620,10 @@ struct ChannelSink {
 }
 
 impl EventSink for ChannelSink {
+    fn session(&mut self, id: &str) {
+        let _ = self.tx.send(SseEvent::Session(id.to_string()));
+    }
+
     fn step(&mut self, step: usize) {
         let _ = self.tx.send(SseEvent::Step(step));
     }
