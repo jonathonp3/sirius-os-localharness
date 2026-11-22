@@ -130,8 +130,8 @@ def main():
     import gi
 
     gi.require_version("Gtk", "4.0")
-    gi.require_version("WebKit2", "4.1")
-    from gi.repository import Gtk, WebKit2
+    gi.require_version("WebKit", "6.0")
+    from gi.repository import Gtk, WebKit
 
     app = Gtk.Application(application_id=f"{APP_ID}.Native")
 
@@ -141,7 +141,7 @@ def main():
         header = Gtk.HeaderBar()
         window.set_titlebar(header)
 
-        webview = WebKit2.WebView()
+        webview = WebKit.WebView()
         webview.load_uri(url)
 
         reload = Gtk.Button(label="Reload")

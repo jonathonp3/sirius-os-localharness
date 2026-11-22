@@ -278,7 +278,7 @@ Sessions live in `~/.local/share/local-harness/sessions`.
 
 ## Native window
 
-`local-harness-window` is a GTK4/WebKit2 shell around the web UI. It connects
+`local-harness-window` is a GTK4/WebKitGTK 6.0 shell around the web UI. It connects
 to the `local-harness-flatpak` user service, starting it if needed, and leaves
 the service running when the window closes. If the service cannot start it
 falls back to launching the Flatpak host directly with an ephemeral token.
