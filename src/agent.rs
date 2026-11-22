@@ -379,7 +379,11 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - Read a file before editing it.\n\
          - Shell commands must be non-interactive.\n\
          {delegation}\
-         - Answer directly; do not produce long deliberation.",
+         - Answer directly; do not produce long deliberation.\n\
+         Formatting:\n\
+         - Use Markdown: short paragraphs, \"- \" bullet lists with one item per line, and fenced code blocks with a language tag.\n\
+         - Preserve line breaks; never collapse a list or command output into one sentence.\n\
+         - When listing directory contents, put one path per bullet.",
         workspace.display(),
         if tools.is_empty() { "none".to_string() } else { tools.join(", ") }
     )
