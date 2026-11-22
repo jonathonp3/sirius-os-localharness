@@ -15,10 +15,10 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 #status.error { color:#ff6b6b; }
 #log { flex:1; overflow:auto; padding:18px; display:flex; flex-direction:column; gap:10px; }
 .bubble { max-width:min(760px, 92%); padding:10px 12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
-.user { align-self:flex-end; background:#23405f; }
+.user { align-self:flex-end; background:var(--panel); border:1px solid var(--border); color:var(--text); }
 .assistant { align-self:flex-start; background:var(--panel); border:1px solid var(--border); white-space:normal; }
 .tool { align-self:flex-start; font:12px ui-monospace, monospace; color:var(--muted); background:#151515; border:1px dashed var(--border); padding:4px 8px; border-radius:6px; max-width:92%; white-space:pre-wrap; }
-.meta { align-self:flex-start; color:var(--muted); font-size:13px; }
+.meta { align-self:flex-start; color:var(--muted); font-size:14px; }
 .error { align-self:flex-start; color:#ffb3b3; background:#2a1515; border:1px solid #5a2a2a; padding:8px 10px; border-radius:8px; white-space:pre-wrap; }
 .assistant pre { position:relative; }
 .assistant table { border-collapse:collapse; margin:0 0 8px; display:block; overflow:auto; }
@@ -254,7 +254,7 @@ function renderSpellLayer() {
     const word = match[0];
     if (skipSpellWord(word) || spellDictionary.check(word)) continue;
     html += escapeHtml(text.slice(last, match.index));
-    html += '<mark>' + escapeHtml(word) + '</mark>';
+    html += '<mark data-start="' + match.index + '" data-end="' + (match.index + word.length) + '">' + escapeHtml(word) + '</mark>';
     last = match.index + word.length;
   }
   html += escapeHtml(text.slice(last));
@@ -306,22 +306,19 @@ promptEl.addEventListener('scroll', () => { spellLayer.scrollTop = promptEl.scro
 window.addEventListener('resize', scheduleSpell);
 promptEl.addEventListener('contextmenu', (event) => {
   if (!spellcheckEnabled || !spellDictionary) return;
-  const text = promptEl.value;
-  const position = promptEl.selectionStart;
-  const pattern = /[A-Za-z][A-Za-z'’-]*/g;
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
-    const start = match.index;
-    const end = start + match[0].length;
-    if (position >= start && position <= end) {
-      const word = match[0];
-      if (skipSpellWord(word) || spellDictionary.check(word)) { spellMenu.hidden = true; return; }
-      event.preventDefault();
-      showSpellMenu(word, start, end, event.clientX, event.clientY);
-      return;
-    }
-  }
-  spellMenu.hidden = true;
+  renderSpellLayer();
+  const mark = Array.from(spellLayer.querySelectorAll('mark')).find((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    return event.clientX >= rect.left && event.clientX <= rect.right
+      && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  });
+  if (!mark) { spellMenu.hidden = true; return; }
+  event.preventDefault();
+  showSpellMenu(mark.textContent, Number(mark.dataset.start), Number(mark.dataset.end), event.clientX, event.clientY);
+});
+document.addEventListener('click', (event) => {
+  if (event.button !== 0) return;
+  if (!spellMenu.contains(event.target)) spellMenu.hidden = true;
 });
 document.addEventListener('click', (event) => {
   if (!spellMenu.contains(event.target)) spellMenu.hidden = true;
