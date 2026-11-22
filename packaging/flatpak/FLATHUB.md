@@ -1,6 +1,6 @@
 # Flathub submission checklist
 
-The CI workflow (`.github/workflows/flatpak.yml`) builds the bundle from this
+The CI workflow (`.github/workflows/build.yml`) builds the bundle from this
 checkout. Flathub itself requires a public source repository and a few extra
 steps:
 
