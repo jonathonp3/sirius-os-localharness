@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use anyhow::{Context, Result};
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header::AUTHORIZATION};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
@@ -22,6 +22,10 @@ use crate::agent::{self, EventSink};
 use crate::session::Session;
 
 const INDEX: &str = include_str!("index.html");
+const MARKDOWN_JS: &str = include_str!("assets/markdown-it.min.js");
+const HIGHLIGHT_JS: &str = include_str!("assets/highlight.min.js");
+const PURIFY_JS: &str = include_str!("assets/purify.min.js");
+const HIGHLIGHT_CSS: &str = include_str!("assets/highlight.css");
 
 struct AppState {
     config: agent::Config,
@@ -56,6 +60,7 @@ pub async fn run(
     });
     let app = Router::new()
         .route("/", get(index))
+        .route("/assets/{file}", get(asset))
         .route("/api/health", get(health))
         .route("/api/models", get(models))
         .route("/api/chat", post(chat))
@@ -83,6 +88,26 @@ pub async fn run(
 
 async fn index() -> Response {
     Html(INDEX).into_response()
+}
+
+async fn asset(Path(file): Path<String>) -> Response {
+    let (content_type, content) = match file.as_str() {
+        "markdown-it.min.js" => ("application/javascript; charset=utf-8", MARKDOWN_JS),
+        "highlight.min.js" => ("application/javascript; charset=utf-8", HIGHLIGHT_JS),
+        "purify.min.js" => ("application/javascript; charset=utf-8", PURIFY_JS),
+        "highlight.css" => ("text/css; charset=utf-8", HIGHLIGHT_CSS),
+        _ => return (StatusCode::NOT_FOUND, "not found").into_response(),
+    };
+    let mut response = content.into_response();
+    response.headers_mut().insert(
+        axum::http::header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static(content_type),
+    );
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("public, max-age=3600"),
+    );
+    response
 }
 
 async fn health() -> Response {
@@ -247,7 +272,7 @@ enum SseEvent {
     Token(String),
     Step(usize),
     ToolCall { name: String, arguments: String },
-    ToolResult { chars: usize },
+    ToolResult { chars: usize, preview: String },
     Notice(String),
     Done { session: String, prompt_tokens: u64, completion_tokens: u64, cached_tokens: u64 },
     Error { message: String },
@@ -261,9 +286,9 @@ fn to_event(event: SseEvent) -> Event {
         SseEvent::ToolCall { name, arguments } => Event::default()
             .event("tool_call")
             .data(json!({ "name": name, "arguments": arguments }).to_string()),
-        SseEvent::ToolResult { chars } => Event::default()
+        SseEvent::ToolResult { chars, preview } => Event::default()
             .event("tool_result")
-            .data(json!({ "chars": chars }).to_string()),
+            .data(json!({ "chars": chars, "preview": preview }).to_string()),
         SseEvent::Notice(message) => Event::default().event("notice").data(json!({ "message": message }).to_string()),
         SseEvent::Done { session, prompt_tokens, completion_tokens, cached_tokens } => Event::default()
             .event("done")
@@ -310,8 +335,10 @@ impl EventSink for ChannelSink {
         });
     }
 
-    fn tool_result(&mut self, chars: usize) {
-        let _ = self.tx.send(SseEvent::ToolResult { chars });
+    fn tool_result(&mut self, result: &str) {
+        let chars = result.chars().count();
+        let preview: String = result.chars().take(4_000).collect();
+        let _ = self.tx.send(SseEvent::ToolResult { chars, preview });
     }
 
     fn notice(&mut self, text: &str) {

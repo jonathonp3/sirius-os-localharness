@@ -611,8 +611,8 @@ impl EventSink for CliSink {
         eprintln!("[tool] {name}({arguments})");
     }
 
-    fn tool_result(&mut self, chars: usize) {
-        eprintln!("[tool] result: {chars} chars");
+    fn tool_result(&mut self, result: &str) {
+        eprintln!("[tool] result: {} chars", result.chars().count());
     }
 
     fn usage(&mut self, prompt: u64, completion: u64, cached: u64) {

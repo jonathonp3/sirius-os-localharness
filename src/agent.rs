@@ -21,7 +21,7 @@ pub trait EventSink: Send {
     fn step(&mut self, _step: usize) {}
     fn token(&mut self, _text: &str) {}
     fn tool_call(&mut self, _name: &str, _arguments: &str) {}
-    fn tool_result(&mut self, _chars: usize) {}
+    fn tool_result(&mut self, _result: &str) {}
     fn usage(&mut self, _prompt: u64, _completion: u64, _cached: u64) {}
     fn finish(&mut self) {}
 }
@@ -186,7 +186,7 @@ pub async fn run(
                         Err(error) => format!("tool error: {error:#}"),
                     }
                 };
-                sink.tool_result(result.chars().count());
+                sink.tool_result(&result);
                 let message = Message::tool(call.id.clone(), result);
                 messages.push(message.clone());
                 session

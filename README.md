@@ -93,6 +93,12 @@ runs one chat at a time (matching the model server's single slot). Options:
 
 The server binds loopback only and accepts the token as `?token=` or
 `Authorization: Bearer`. Sessions are recorded exactly as in the CLI.
+
+The browser client renders Markdown (headings, lists, tables, links, fenced
+code), highlights code with copy buttons, and shows tool calls as collapsible
+cards with arguments and result previews. The renderer libraries (markdown-it,
+highlight.js, DOMPurify) are vendored into the binary and served locally, so
+the UI works offline.
 `--concurrency N` allows N chats in flight (default: the model server's slot
 count). Real parallelism needs llama.cpp started with `--parallel N`; otherwise
 the backend serializes the requests.

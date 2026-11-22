@@ -19,6 +19,25 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool { align-self:flex-start; font:12px ui-monospace, monospace; color:var(--muted); background:#151515; border:1px dashed var(--border); padding:4px 8px; border-radius:6px; max-width:92%; white-space:pre-wrap; }
 .meta { align-self:flex-start; color:var(--muted); font-size:11px; }
 .error { align-self:flex-start; color:#ffb3b3; background:#2a1515; border:1px solid #5a2a2a; padding:8px 10px; border-radius:8px; white-space:pre-wrap; }
+.assistant pre { position:relative; }
+.assistant table { border-collapse:collapse; margin:0 0 8px; display:block; overflow:auto; }
+.assistant th, .assistant td { border:1px solid var(--border); padding:4px 8px; }
+.assistant th { background:#1f1f1f; }
+.assistant blockquote { margin:0 0 8px; padding-left:10px; border-left:2px solid var(--border); color:var(--muted); }
+.assistant a { color:var(--accent); }
+.assistant hr { border:0; border-top:1px solid var(--border); margin:10px 0; }
+.copy-btn { position:absolute; top:4px; right:4px; background:#2a2a2a; color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:2px 6px; cursor:pointer; opacity:0; transition:opacity .15s; }
+.assistant pre:hover .copy-btn, .copy-btn:focus { opacity:1; }
+.tool-card { align-self:flex-start; width:min(760px,92%); background:#151515; border:1px solid var(--border); border-radius:8px; font:12px ui-monospace, monospace; color:var(--muted); }
+.tool-card summary { cursor:pointer; padding:6px 10px; color:var(--text); }
+.tool-card[open] summary { border-bottom:1px solid var(--border); }
+.tool-card summary code { color:var(--accent); }
+.tool-status { font-size:11px; color:var(--muted); margin-left:6px; }
+.tool-status.ok { color:#68d391; }
+.tool-status.error { color:#fc8181; }
+.tool-block { padding:6px 10px; }
+.tool-label { text-transform:uppercase; font-size:10px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; }
+.tool-card pre { margin:0; background:#0d0d0d; border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
 form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; background:var(--panel); }
 textarea { flex:1; resize:none; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; font:inherit; min-height:44px; max-height:180px; }
 button { background:var(--accent); color:#08111f; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
@@ -36,6 +55,7 @@ button:disabled { opacity:.5; cursor:default; }
 .assistant ul, .assistant ol { margin:0 0 8px 1.3em; padding:0; }
 .assistant li { margin:2px 0; }
 </style>
+<link rel="stylesheet" href="/assets/highlight.css">
 </head>
 <body>
 <header><h1>Local Harness</h1><span id="status">ready</span></header>
@@ -45,6 +65,9 @@ button:disabled { opacity:.5; cursor:default; }
 <button id="stop" type="button" disabled>Stop</button>
 <button id="send" type="submit">Send</button>
 </form>
+<script src="/assets/markdown-it.min.js"></script>
+<script src="/assets/highlight.min.js"></script>
+<script src="/assets/purify.min.js"></script>
 <script>
 const token = new URLSearchParams(location.search).get('token');
 const log = document.getElementById('log');
@@ -57,6 +80,7 @@ const stopEl = document.getElementById('stop');
 let controller = null;
 
 let assistantEl = null;
+let openTool = null;
 let finished = false;
 
 function setStatus(text, isError = false) {
@@ -79,101 +103,83 @@ function escapeHtml(text) {
   return text.replace(/[&<>]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[character]));
 }
 
-function renderInline(text) {
-  return text
-    .replace(/`([^`]+)`/g, (_, code) => '<code>' + code + '</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-}
+const md = window.markdownit({
+  html: false,
+  linkify: true,
+  breaks: true,
+  highlight: function (str, lang) {
+    if (lang && window.hljs && hljs.getLanguage(lang)) {
+      try {
+        const highlighted = hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
+        return '<pre class="hljs"><code class="hljs language-' + escapeHtml(lang) + '">' + highlighted + '</code></pre>';
+      } catch (error) {
+        // fall through to plain code
+      }
+    }
+    return '<pre class="hljs"><code class="hljs">' + md.utils.escapeHtml(str) + '</code></pre>';
+  }
+});
+
+const defaultLinkOpen = md.renderer.rules.link_open ||
+  function (tokens, idx, options, env, self) { return self.renderToken(tokens, idx, options); };
+md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
+  tokens[idx].attrSet('target', '_blank');
+  tokens[idx].attrSet('rel', 'noopener noreferrer');
+  return defaultLinkOpen(tokens, idx, options, env, self);
+};
 
 function renderMarkdown(text) {
-  const lines = text.split('\n');
-  let html = '';
-  let code = null;
-  let list = null;
-  let paragraph = [];
+  return DOMPurify.sanitize(md.render(text), { ADD_ATTR: ['target'] });
+}
 
-  const flushParagraph = () => {
-    if (paragraph.length) {
-      html += '<p>' + paragraph.join('\n') + '</p>';
-      paragraph = [];
-    }
-  };
-  const closeList = () => {
-    if (list) {
-      html += '</' + list + '>';
-      list = null;
-    }
-  };
-
-  for (const raw of lines) {
-    if (code) {
-      if (raw.startsWith('```')) {
-        const language = code.language ? ' class="language-' + code.language + '"' : '';
-        html += '<pre><code' + language + '>' + code.lines.join('\n') + '</code></pre>';
-        code = null;
-      } else {
-        code.lines.push(escapeHtml(raw));
+function enhanceAssistant(element) {
+  element.querySelectorAll('pre').forEach((pre) => {
+    if (pre.querySelector('.copy-btn')) return;
+    const button = document.createElement('button');
+    button.className = 'copy-btn';
+    button.type = 'button';
+    button.textContent = 'copy';
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(pre.querySelector('code')?.innerText || pre.innerText);
+        button.textContent = 'copied';
+        setTimeout(() => { button.textContent = 'copy'; }, 1200);
+      } catch (error) {
+        button.textContent = 'failed';
       }
-      continue;
-    }
+    });
+    pre.appendChild(button);
+  });
+}
 
-    if (raw.startsWith('```')) {
-      flushParagraph();
-      closeList();
-      code = { language: escapeHtml(raw.slice(3).trim()).replace(/[^a-zA-Z0-9_+-]/g, ''), lines: [] };
-      continue;
-    }
+function prettyJson(value) {
+  try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
+}
 
-    const heading = raw.match(/^(#{1,3})\s+(.*)$/);
-    if (heading) {
-      flushParagraph();
-      closeList();
-      const level = heading[1].length;
-      html += '<h' + level + '>' + renderInline(escapeHtml(heading[2])) + '</h' + level + '>';
-      continue;
-    }
+function addToolCard(name, argumentsText) {
+  const card = document.createElement('details');
+  card.className = 'tool-card';
+  card.innerHTML = '<summary>🔧 <code>' + escapeHtml(name) + '</code> <span class="tool-status">running…</span></summary>'
+    + '<div class="tool-block"><div class="tool-label">arguments</div><pre><code class="tool-args"></code></pre></div>'
+    + '<div class="tool-block tool-result" hidden><div class="tool-label">result</div><pre><code class="tool-result-text"></code></pre></div>';
+  card.querySelector('.tool-args').textContent = prettyJson(argumentsText);
+  log.appendChild(card);
+  log.scrollTop = log.scrollHeight;
+  return card;
+}
 
-    const bullet = raw.match(/^\s*[-*+]\s+(.*)$/);
-    if (bullet) {
-      flushParagraph();
-      if (list !== 'ul') {
-        closeList();
-        html += '<ul>';
-        list = 'ul';
-      }
-      html += '<li>' + renderInline(escapeHtml(bullet[1])) + '</li>';
-      continue;
-    }
-
-    const ordered = raw.match(/^\s*\d+[.)]\s+(.*)$/);
-    if (ordered) {
-      flushParagraph();
-      if (list !== 'ol') {
-        closeList();
-        html += '<ol>';
-        list = 'ol';
-      }
-      html += '<li>' + renderInline(escapeHtml(ordered[1])) + '</li>';
-      continue;
-    }
-
-    if (raw.trim() === '') {
-      flushParagraph();
-      closeList();
-      continue;
-    }
-
-    closeList();
-    paragraph.push(renderInline(escapeHtml(raw)));
-  }
-
-  if (code) {
-    const language = code.language ? ' class="language-' + code.language + '"' : '';
-    html += '<pre><code' + language + '>' + code.lines.join('\n') + '</code></pre>';
-  }
-  flushParagraph();
-  closeList();
-  return html;
+function finishToolCard(card, chars, preview) {
+  if (!card) return;
+  card.querySelector('.tool-result').hidden = false;
+  const shown = preview || '';
+  card.querySelector('.tool-result-text').textContent = shown + (chars > shown.length ? '\n… (' + chars + ' chars total)' : '');
+  const status = card.querySelector('.tool-status');
+  const isError = /^tool error:/i.test(preview || '');
+  status.textContent = isError ? 'error' : 'done';
+  status.classList.add(isError ? 'error' : 'ok');
+  card.classList.toggle('tool-error', isError);
+  if (isError) card.open = true;
+  log.scrollTop = log.scrollHeight;
 }
 
 function handleBlock(block) {
@@ -192,15 +198,17 @@ function handleBlock(block) {
     if (!assistantEl) assistantEl = add('assistant');
     assistantEl.dataset.raw = (assistantEl.dataset.raw || '') + payload.text;
     assistantEl.innerHTML = renderMarkdown(assistantEl.dataset.raw);
+    enhanceAssistant(assistantEl);
   } else if (event === 'queued') {
     setStatus(payload.position > payload.slots ? 'queued #' + payload.position : 'starting');
   } else if (event === 'step') {
     setStatus('step ' + payload.step);
   } else if (event === 'tool_call') {
-    add('tool', '🔧 ' + payload.name + '(' + payload.arguments + ')');
+    openTool = addToolCard(payload.name, payload.arguments);
     assistantEl = null;
   } else if (event === 'tool_result') {
-    add('tool', '↳ ' + payload.chars + ' chars');
+    finishToolCard(openTool, payload.chars, payload.preview);
+    openTool = null;
   } else if (event === 'notice') {
     add('meta', payload.message);
   } else if (event === 'done') {
@@ -209,10 +217,12 @@ function handleBlock(block) {
     add('meta', 'session ' + payload.session + ' · ' + payload.prompt_tokens + '→' + payload.completion_tokens + ' tokens' + cached);
     setStatus('ready');
     assistantEl = null;
+    openTool = null;
   } else if (event === 'error') {
     add('error', payload.message);
     setStatus('error', true);
     assistantEl = null;
+    openTool = null;
   }
   log.scrollTop = log.scrollHeight;
 }
@@ -227,6 +237,7 @@ async function send() {
   controller = new AbortController();
   setStatus('thinking');
   assistantEl = null;
+  openTool = null;
   finished = false;
 
   try {
