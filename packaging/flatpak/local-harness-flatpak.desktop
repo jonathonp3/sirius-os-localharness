@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Local Harness
+Comment=Local-first agent harness for llama.cpp
+Exec=local-harness-flatpak
+Terminal=false
+Icon=org.jonathonp3.LocalHarness
+Categories=Development;Utility;
+StartupNotify=false

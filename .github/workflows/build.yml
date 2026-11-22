@@ -1,0 +1,90 @@
+name: Build and Release Local Harness
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: flatpak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flatpak:
+    name: "Build and Release"
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo
+      uses: Swatinem/rust-cache@v2
+
+    - name: Build the harness binary
+      run: cargo build --release --locked
+
+    - name: Stage the Flatpak binary
+      run: cp target/release/harness packaging/flatpak/harness
+
+    - name: Flatpak Build Environment
+      uses: addnab/docker-run-action@v3
+      with:
+        image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+        options: -v ${{ github.workspace }}:/workspace --privileged
+        run: |
+          cd /workspace
+
+          # 1. Import the signing key from the repository secret.
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          FPR=65269CFC0D32C2CA632C48C5F8AF682DDA82A240
+
+          # 2. Runtimes.
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Sdk//51 org.gnome.Platform//51
+
+          # 3. Build, sign, and bundle.
+          flatpak-builder --user --disable-rofiles-fuse \
+            --repo=deploy-repo \
+            --gpg-sign="$FPR" \
+            --default-branch=stable \
+            --force-clean build-dir packaging/flatpak/org.jonathonp3.LocalHarness.json || exit 1
+          flatpak build-update-repo --gpg-sign="$FPR" deploy-repo
+          flatpak build-bundle deploy-repo local-harness-stable.flatpak org.jonathonp3.LocalHarness stable
+
+          # 4. Publishable signed-repo descriptor and public key.
+          gpg --dearmor < packaging/flatpak/local-harness.gpg | base64 -w0 > /tmp/key.b64
+          cat > deploy-repo/local-harness.flatpakrepo <<EOF
+          [Flatpak Repo]
+          Title=Local Harness
+          Url=https://jonathonp3.github.io/sirius-os-localharness/
+          Homepage=https://github.com/jonathonp3/sirius-os-localharness
+          GPGKey=$(cat /tmp/key.b64)
+          EOF
+          cp packaging/flatpak/local-harness.gpg deploy-repo/key.gpg
+
+          ls -R deploy-repo
+          chmod -R 777 /workspace/deploy-repo
+          chmod 666 /workspace/local-harness-stable.flatpak
+
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: latest-build
+        name: "Local Harness - Latest"
+        files: |
+          local-harness-stable.flatpak
+          packaging/flatpak/local-harness.gpg
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Deploy signed repo to GitHub Pages
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        folder: deploy-repo
+        branch: gh-pages

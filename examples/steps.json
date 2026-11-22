@@ -1,0 +1,4 @@
+{"steps":[
+ {"name":"facts","prompt":"Read Cargo.toml and list the direct dependencies in one comma-separated line."},
+ {"name":"summary","prompt":"The dependencies found were: {{facts}}. Write one short sentence summarizing what this project uses."}
+]}

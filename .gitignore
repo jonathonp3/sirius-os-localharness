@@ -1,0 +1,9 @@
+/target
+/.harness-data
+/demo
+/bin/
+/dist
+/pkgtest
+/packaging/flatpak/harness
+*-private.gpg
+*private*.gpg

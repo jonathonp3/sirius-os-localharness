@@ -1,0 +1,33 @@
+{
+  "app-id": "org.jonathonp3.LocalHarness",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "51",
+  "sdk": "org.gnome.Sdk",
+  "command": "local-harness-flatpak",
+  "finish-args": [
+    "--share=network",
+    "--filesystem=home",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--share=ipc",
+    "--talk-name=org.freedesktop.Flatpak"
+  ],
+  "modules": [
+    {
+      "name": "local-harness",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm755 harness /app/bin/harness",
+        "install -Dm755 local-harness-flatpak.sh /app/bin/local-harness-flatpak",
+        "install -Dm644 local-harness-flatpak.desktop /app/share/applications/org.jonathonp3.LocalHarness.desktop",
+        "install -Dm644 org.jonathonp3.LocalHarness.svg /app/share/icons/hicolor/scalable/apps/org.jonathonp3.LocalHarness.svg"
+      ],
+      "sources": [
+        { "type": "file", "path": "harness" },
+        { "type": "file", "path": "local-harness-flatpak.sh" },
+        { "type": "file", "path": "local-harness-flatpak.desktop" },
+        { "type": "file", "path": "org.jonathonp3.LocalHarness.svg" }
+      ]
+    }
+  ]
+}

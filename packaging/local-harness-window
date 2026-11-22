@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""Native WebKitGTK window for Local Harness.
+
+Starts `harness serve` on a free loopback port, waits for health, then opens
+the browser UI in a GTK4/WebKit2 window. Closing the window stops the server.
+"""
+import argparse
+import atexit
+import os
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+
+def default_harness():
+    for candidate in (os.path.join(HERE, "harness"), os.path.join(HERE, "..", "bin", "harness")):
+        if os.path.exists(candidate):
+            return os.path.normpath(candidate)
+    return shutil.which("harness") or os.path.join(HERE, "harness")
+
+
+def free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def wait_health(port, process, timeout=20.0):
+    url = f"http://127.0.0.1:{port}/api/health"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if process.poll() is not None:
+            return False
+        try:
+            with urllib.request.urlopen(url, timeout=1) as response:
+                if response.status == 200:
+                    return True
+        except Exception:
+            time.sleep(0.2)
+    return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Local Harness native window")
+    parser.add_argument("--workspace", default=os.getcwd())
+    parser.add_argument("--harness", default=os.environ.get("LOCAL_HARNESS_BIN") or default_harness())
+    parser.add_argument("--self-test", action="store_true", help="start the server, print the URL, then exit")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.harness):
+        print(f"harness binary not found: {args.harness}", file=sys.stderr)
+        return 1
+
+    port = free_port()
+    token = secrets.token_hex(16)
+    command = [args.harness, "serve", "--port", str(port), "--token", token, "--workspace", args.workspace]
+    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def stop():
+        if process.poll() is None:
+            process.terminate()
+
+    atexit.register(stop)
+
+    if not wait_health(port, process):
+        print("Local Harness server failed to start", file=sys.stderr)
+        stop()
+        return 1
+
+    url = f"http://127.0.0.1:{port}/?token={token}"
+    if args.self_test:
+        print(url)
+        stop()
+        return 0
+
+    import gi
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("WebKit2", "4.1")
+    from gi.repository import Gtk, WebKit2
+
+    app = Gtk.Application(application_id="org.jonathonp3.LocalHarness")
+
+    def on_activate(app):
+        window = Gtk.ApplicationWindow(application=app, title="Local Harness")
+        window.set_default_size(1100, 800)
+        webview = WebKit2.WebView()
+        webview.load_uri(url)
+        window.set_child(webview)
+        window.present()
+
+    app.connect("activate", on_activate)
+    app.connect("shutdown", lambda _app: stop())
+    app.run([])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,13 @@
+{
+  "plugins": [
+    {
+      "name": "wordcount",
+      "description": "Count words in a workspace file.",
+      "command": "wc -w {path}",
+      "parameters": {
+        "path": { "type": "string", "description": "Workspace-relative file path" }
+      },
+      "required": ["path"]
+    }
+  ]
+}

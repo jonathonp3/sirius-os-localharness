@@ -1,0 +1,11 @@
+[Unit]
+Description=Local Harness (llama.cpp agent host)
+After=network.target
+
+[Service]
+ExecStart=%h/.local/bin/harness serve --port 8787
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

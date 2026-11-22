@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Harness</title>
+<style>
+:root { color-scheme: dark; --bg:#111; --panel:#1a1a1a; --text:#e8e8e8; --muted:#9a9a9a; --accent:#6ea8fe; --border:#2a2a2a; }
+* { box-sizing: border-box; }
+body { margin:0; font:14px/1.5 ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; }
+header h1 { font-size:14px; font-weight:600; margin:0; }
+#status { color:var(--muted); font-size:12px; margin-left:auto; }
+#status.error { color:#ff6b6b; }
+#log { flex:1; overflow:auto; padding:18px; display:flex; flex-direction:column; gap:10px; }
+.bubble { max-width:min(760px, 92%); padding:10px 12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
+.user { align-self:flex-end; background:#23405f; }
+.assistant { align-self:flex-start; background:var(--panel); border:1px solid var(--border); }
+.tool { align-self:flex-start; font:12px ui-monospace, monospace; color:var(--muted); background:#151515; border:1px dashed var(--border); padding:4px 8px; border-radius:6px; max-width:92%; white-space:pre-wrap; }
+.meta { align-self:flex-start; color:var(--muted); font-size:11px; }
+.error { align-self:flex-start; color:#ffb3b3; background:#2a1515; border:1px solid #5a2a2a; padding:8px 10px; border-radius:8px; white-space:pre-wrap; }
+form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; background:var(--panel); }
+textarea { flex:1; resize:none; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; font:inherit; min-height:44px; max-height:180px; }
+button { background:var(--accent); color:#08111f; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
+button:disabled { opacity:.5; cursor:default; }
+#stop { background:#3a3a3a; color:var(--text); }
+.assistant pre { background:#0d0d0d; border:1px solid var(--border); border-radius:6px; padding:8px; overflow:auto; white-space:pre; }
+.assistant code { font-family: ui-monospace, monospace; background:#0d0d0d; padding:1px 4px; border-radius:4px; }
+.assistant pre code { background:none; padding:0; }
+</style>
+</head>
+<body>
+<header><h1>Local Harness</h1><span id="status">ready</span></header>
+<main id="log"></main>
+<form id="form">
+<textarea id="prompt" placeholder="Ask the local model… (Enter to send, Shift+Enter for a newline)" autofocus></textarea>
+<button id="stop" type="button" disabled>Stop</button>
+<button id="send" type="submit">Send</button>
+</form>
+<script>
+const token = new URLSearchParams(location.search).get('token');
+const log = document.getElementById('log');
+const statusEl = document.getElementById('status');
+const form = document.getElementById('form');
+const promptEl = document.getElementById('prompt');
+const sendEl = document.getElementById('send');
+const stopEl = document.getElementById('stop');
+
+let controller = null;
+
+let assistantEl = null;
+let finished = false;
+
+function setStatus(text, isError = false) {
+  statusEl.textContent = text;
+  statusEl.className = isError ? 'error' : '';
+}
+
+function add(className, text = '') {
+  const element = document.createElement('div');
+  element.className = className;
+  element.textContent = text;
+  log.appendChild(element);
+  log.scrollTop = log.scrollHeight;
+  return element;
+}
+
+if (!token) setStatus('missing token in URL', true);
+
+function escapeHtml(text) {
+  return text.replace(/[&<>]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[character]));
+}
+
+function renderInline(text) {
+  return text
+    .replace(/`([^`]+)`/g, (_, code) => '<code>' + code + '</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function renderMarkdown(text) {
+  const lines = text.split('\n');
+  let html = '';
+  let inCode = false;
+  let code = [];
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (inCode) {
+        html += '<pre><code>' + code.join('\n') + '</code></pre>';
+        code = [];
+        inCode = false;
+      } else {
+        inCode = true;
+      }
+      continue;
+    }
+    if (inCode) {
+      code.push(escapeHtml(line));
+    } else {
+      html += renderInline(escapeHtml(line)) + '\n';
+    }
+  }
+  if (inCode) html += '<pre><code>' + code.join('\n') + '</code></pre>';
+  return html;
+}
+
+function handleBlock(block) {
+  let event = 'message';
+  let data = '';
+  for (const raw of block.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    else if (line.startsWith('data:')) data += line.slice(5).trim();
+  }
+  if (!data) return;
+  let payload;
+  try { payload = JSON.parse(data); } catch { return; }
+
+  if (event === 'token') {
+    if (!assistantEl) assistantEl = add('assistant');
+    assistantEl.dataset.raw = (assistantEl.dataset.raw || '') + payload.text;
+    assistantEl.innerHTML = renderMarkdown(assistantEl.dataset.raw);
+  } else if (event === 'queued') {
+    setStatus(payload.position > payload.slots ? 'queued #' + payload.position : 'starting');
+  } else if (event === 'step') {
+    setStatus('step ' + payload.step);
+  } else if (event === 'tool_call') {
+    add('tool', '🔧 ' + payload.name + '(' + payload.arguments + ')');
+    assistantEl = null;
+  } else if (event === 'tool_result') {
+    add('tool', '↳ ' + payload.chars + ' chars');
+  } else if (event === 'notice') {
+    add('meta', payload.message);
+  } else if (event === 'done') {
+    finished = true;
+    const cached = payload.cached_tokens ? ' · ' + payload.cached_tokens + ' cached' : '';
+    add('meta', 'session ' + payload.session + ' · ' + payload.prompt_tokens + '→' + payload.completion_tokens + ' tokens' + cached);
+    setStatus('ready');
+    assistantEl = null;
+  } else if (event === 'error') {
+    add('error', payload.message);
+    setStatus('error', true);
+    assistantEl = null;
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+async function send() {
+  const text = promptEl.value.trim();
+  if (!text || !token || sendEl.disabled) return;
+  add('user', text);
+  promptEl.value = '';
+  sendEl.disabled = true;
+  stopEl.disabled = false;
+  controller = new AbortController();
+  setStatus('thinking');
+  assistantEl = null;
+  finished = false;
+
+  try {
+    const response = await fetch('/api/chat?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: text }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      add('error', await response.text());
+      setStatus('error', true);
+      return;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let index;
+      while ((index = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, index);
+        buffer = buffer.slice(index + 2);
+        handleBlock(block);
+      }
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      add('meta', 'stopped');
+      setStatus('stopped');
+    } else {
+      add('error', String(error));
+      setStatus('error', true);
+    }
+  } finally {
+    controller = null;
+    stopEl.disabled = true;
+    sendEl.disabled = false;
+    if (!finished) setStatus('ready');
+    finished = false;
+    promptEl.focus();
+  }
+}
+
+form.addEventListener('submit', (event) => { event.preventDefault(); send(); });
+stopEl.addEventListener('click', () => { if (controller) controller.abort(); });
+promptEl.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }
+});
+</script>
+</body>
+</html>
