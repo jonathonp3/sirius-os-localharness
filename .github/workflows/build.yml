@@ -17,14 +17,15 @@ jobs:
   flatpak:
     name: "Build and Release"
     runs-on: ubuntu-24.04
+    environment: flatpak-signing
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
 
     - name: Cache cargo
-      uses: Swatinem/rust-cache@v2
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
     - name: Build the harness binary
       run: cargo build --release --locked
@@ -33,7 +34,7 @@ jobs:
       run: cp target/release/harness packaging/flatpak/harness
 
     - name: Flatpak Build Environment
-      uses: addnab/docker-run-action@v3
+      uses: addnab/docker-run-action@4f65fabd2431ebc8d299f8e5a018d79a769ae185 # v3
       with:
         image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
         options: -v ${{ github.workspace }}:/workspace --privileged
@@ -88,7 +89,7 @@ jobs:
           chmod 666 /workspace/local-harness-stable.flatpak
 
     - name: Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
       with:
         tag_name: latest-build
         name: "Local Harness - Latest"
@@ -99,7 +100,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Deploy signed repo to GitHub Pages
-      uses: JamesIves/github-pages-deploy-action@v4
+      uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4
       with:
         folder: deploy-repo
         branch: gh-pages
