@@ -64,6 +64,7 @@ jobs:
           Title=Local Harness
           Url=https://jonathonp3.github.io/sirius-os-localharness/
           Homepage=https://github.com/jonathonp3/sirius-os-localharness
+          RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
           GPGKey=$(cat /tmp/key.b64)
           EOF
           cp packaging/flatpak/local-harness.gpg deploy-repo/key.gpg
