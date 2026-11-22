@@ -301,14 +301,14 @@ Tool cards have three copy actions:
 
 - **copy command** — only the shell command (safe to paste and run);
 - **copy output** — raw output for an editor or document;
-- **copy #comment** — every output line prefixed with `#`, so pasting it
+- **copy # comment** — every output line prefixed with `#`, so pasting it
   into a shell cannot execute it.
 
 Card labels are non-selectable, so selecting the card and copying picks up the
 arguments/output values rather than the `ARGUMENTS`/`RESULT` chrome. Raw
 `ls -l` output is not a shell command: pasting it into bash runs each line as a
 command (`total: command not found`, etc.). Use **copy command** to re-run, or
-**copy #comment** when pasting into a terminal.
+**copy # comment** when pasting into a terminal.
 
 ## Themes
 

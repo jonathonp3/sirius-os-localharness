@@ -43,7 +43,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-card summary { user-select:none; }
 .tool-result-text { font-size:14px; }
 .tool-card pre { margin:0; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
-.tool-copy { float:none; text-transform:none; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:5px; font-size:13px; padding:4px 9px; cursor:pointer; }
+.tool-copy { float:none; text-transform:none; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:5px; font-size:14px; padding:4px 10px; cursor:pointer; }
 .approval-card.resolved { opacity:.85; }
 .approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
 .approval-title { color:#f6c177; font-weight:600; margin-bottom:4px; }
@@ -130,6 +130,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <button id="stop" type="button" disabled>Stop</button>
 <button id="send" type="submit">Send</button>
 </form>
+<div id="spell-menu" hidden></div>
 <script src="/assets/typo.js"></script>
 <script src="/assets/markdown-it.min.js"></script>
 <script src="/assets/highlight.min.js"></script>
@@ -279,6 +280,7 @@ function scheduleSpell() {
 let spellMenuOpenedAt = 0;
 
 function hideSpellMenu() {
+  if (!spellMenu) return;
   spellMenu.hidden = true;
   spellMenu.style.display = 'none';
 }
@@ -322,13 +324,16 @@ async function writeClipboard(text) {
 }
 
 function showContextMenu(x, y, spelling) {
+  if (!spellMenu) return;
+  if (spellMenu.parentElement !== document.body) document.body.appendChild(spellMenu);
   spellMenu.innerHTML = '';
   if (spelling) {
     const title = document.createElement('div');
     title.className = 'spell-menu-title';
     title.textContent = spelling.word;
     spellMenu.appendChild(title);
-    const suggestions = spellDictionary.suggest(spelling.word, 6);
+    let suggestions = [];
+    try { suggestions = spellDictionary.suggest(spelling.word, 6); } catch (error) {}
     if (!suggestions.length) {
       const empty = document.createElement('div');
       empty.className = 'spell-menu-empty';
@@ -379,10 +384,16 @@ function showContextMenu(x, y, spelling) {
     promptEl.focus();
   });
 
-  spellMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
-  spellMenu.style.top = Math.min(y, window.innerHeight - 320) + 'px';
-  spellMenu.hidden = false;
+  spellMenu.removeAttribute('hidden');
+  spellMenu.style.position = 'fixed';
   spellMenu.style.display = 'block';
+  spellMenu.style.visibility = 'visible';
+  spellMenu.style.opacity = '1';
+  spellMenu.style.zIndex = '10000';
+  const width = spellMenu.offsetWidth || 220;
+  const height = spellMenu.offsetHeight || 300;
+  spellMenu.style.left = Math.max(8, Math.min(x, window.innerWidth - width - 8)) + 'px';
+  spellMenu.style.top = Math.max(8, Math.min(y, window.innerHeight - height - 8)) + 'px';
   spellMenuOpenedAt = Date.now();
 }
 
@@ -424,19 +435,32 @@ promptEl.addEventListener('input', scheduleSpell);
 promptEl.addEventListener('scroll', () => { spellLayer.scrollTop = promptEl.scrollTop; });
 window.addEventListener('resize', scheduleSpell);
 promptEl.addEventListener('contextmenu', (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  showContextMenu(event.clientX, event.clientY, spellingAt(event.clientX, event.clientY, true));
+  try {
+    showContextMenu(event.clientX, event.clientY, spellingAt(event.clientX, event.clientY, true));
+    event.preventDefault();
+    event.stopPropagation();
+  } catch (error) {
+    console.error('context menu failed', error);
+    hideSpellMenu();
+  }
 });
 promptEl.addEventListener('click', (event) => {
   if (event.button !== 0) return;
-  const spelling = spellingAt(event.clientX, event.clientY, false);
-  if (spelling) showContextMenu(event.clientX, event.clientY, spelling);
+  try {
+    const spelling = spellingAt(event.clientX, event.clientY, false);
+    if (spelling) showContextMenu(event.clientX, event.clientY, spelling);
+  } catch (error) {
+    console.error('spell menu failed', error);
+  }
 });
-document.addEventListener('click', (event) => {
+document.addEventListener('mousedown', (event) => {
   if (event.button !== 0) return;
+  if (spellMenu.contains(event.target)) return;
   if (Date.now() - spellMenuOpenedAt < 250) return;
-  if (!spellMenu.contains(event.target)) hideSpellMenu();
+  hideSpellMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') hideSpellMenu();
 });
 
 function setSpellcheck(enabled) {
@@ -562,7 +586,7 @@ function addToolCard(name, argumentsText) {
     copyButton('copy output', outputValue, 'Copy raw output. Pasting it into a shell runs the lines as commands.')
   );
   card.querySelector('.tool-result .tool-buttons').appendChild(
-    copyButton('copy #comment', () => outputValue().split('\n').map((line) => line ? '# ' + line : '#').join('\n'),
+    copyButton('copy # comment', () => outputValue().split('\n').map((line) => line ? '# ' + line : '#').join('\n'),
       'Copy output prefixed with #, safe to paste into a shell')
   );
 
