@@ -10,6 +10,7 @@ mod registry;
 mod server;
 mod session;
 mod tools;
+mod web;
 mod workflow;
 
 use std::io::Write as _;
@@ -52,6 +53,9 @@ struct Cli {
     /// Auto-approve destructive commands (no prompt).
     #[arg(long, global = true, env = "HARNESS_YES")]
     yes: bool,
+    /// Enable read-only web search/fetch tools (each call asks for approval).
+    #[arg(long, global = true, env = "HARNESS_ALLOW_WEB")]
+    allow_web: bool,
     /// Tool policy: read-only, write, or full.
     #[arg(long, global = true, env = "HARNESS_TOOL_POLICY")]
     tool_policy: Option<String>,
@@ -327,6 +331,7 @@ async fn main() -> Result<()> {
                 depth: 0,
                 max_depth,
                 max_children,
+                web: cli.allow_web,
             };
             let mut sink = CliSink::default();
             let result = agent::run(config, &session, &prompt, history, &mut sink).await;
@@ -368,6 +373,7 @@ async fn main() -> Result<()> {
                 depth: 0,
                 max_depth,
                 max_children,
+                web: cli.allow_web,
             };
             server::run(config, data_dir, port, token, open, concurrency, cli.yes).await
         }
@@ -405,6 +411,7 @@ async fn main() -> Result<()> {
                 depth: 0,
                 max_depth,
                 max_children: 4,
+                web: cli.allow_web,
             };
             eprintln!("[workflow] session {}", session.id);
             workflow::run(config, &file, &session).await

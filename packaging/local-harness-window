@@ -71,7 +71,7 @@ def spawn_direct(port, token):
     command = [
         "flatpak", "run", "--system", "--no-session-bus", "--die-with-parent",
         "--command=harness", APP_ID,
-        "--workspace", str(Path.home()), "--tool-policy", "full",
+        "--workspace", str(Path.home()), "--tool-policy", "full", "--allow-web",
         "serve", "--max-depth", "0", "--port", str(port), "--token", token,
     ]
     return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

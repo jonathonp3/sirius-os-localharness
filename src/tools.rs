@@ -79,6 +79,7 @@ pub struct ToolSet {
     mcp: Arc<Vec<Arc<McpServer>>>,
     scopes: ToolScopes,
     dry_run: bool,
+    web: bool,
 }
 
 impl ToolSet {
@@ -89,12 +90,17 @@ impl ToolSet {
         mcp: Arc<Vec<Arc<McpServer>>>,
         scopes: ToolScopes,
         dry_run: bool,
+        web: bool,
     ) -> Self {
-        Self { root, policy, plugins, mcp, scopes, dry_run }
+        Self { root, policy, plugins, mcp, scopes, dry_run, web }
     }
 
     pub fn names(&self) -> Vec<String> {
         let mut names = vec!["read_file".to_string(), "list_dir".to_string()];
+        if self.web {
+            names.push("web_search".to_string());
+            names.push("web_fetch".to_string());
+        }
         if self.policy.allows_write() {
             names.push("write_file".to_string());
         }
@@ -140,6 +146,32 @@ impl ToolSet {
                 }
             }),
         ];
+        if self.web {
+            definitions.push(json!({
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Read-only DuckDuckGo web search. Returns titles, URLs, and snippets. No downloads.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": { "query": { "type": "string", "description": "Search terms" } },
+                        "required": ["query"]
+                    }
+                }
+            }));
+            definitions.push(json!({
+                "type": "function",
+                "function": {
+                    "name": "web_fetch",
+                    "description": "Read-only HTTPS page fetch. Returns extracted text and the final URL. No downloads and no scripts.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": { "url": { "type": "string", "description": "Public HTTPS URL" } },
+                        "required": ["url"]
+                    }
+                }
+            }));
+        }
         if self.policy.allows_write() {
             definitions.push(json!({
                 "type": "function",
@@ -265,6 +297,18 @@ impl ToolSet {
         }
 
         match name {
+            "web_search" => {
+                if !self.web {
+                    bail!("web tools are disabled (use --allow-web)");
+                }
+                crate::web::search(&string_arg(&arguments, "query")?).await
+            }
+            "web_fetch" => {
+                if !self.web {
+                    bail!("web tools are disabled (use --allow-web)");
+                }
+                crate::web::fetch(&string_arg(&arguments, "url")?).await
+            }
             "read_file" => {
                 let path = self.existing(&string_arg(&arguments, "path")?)?;
                 let text = tokio::fs::read_to_string(&path)

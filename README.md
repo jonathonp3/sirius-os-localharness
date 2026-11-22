@@ -88,7 +88,7 @@ lists them.
 
 Open the printed URL. The page streams tokens and tool calls over SSE and
 runs one chat at a time (matching the model server's single slot). Options:
-`--token <token>` (fixed token), `--allow-write`, `--allow-shell`, `--think`,
+`--token <token>` (fixed token), `--allow-write`, `--allow-shell`, `--allow-web`, `--think`,
 `--max-steps`, `--max-tokens`.
 
 The server binds loopback only and accepts the token as `?token=` or
@@ -105,6 +105,23 @@ the backend serializes the requests.
 
 
 
+
+## Read-only web tools
+
+`--allow-web` enables two tools:
+
+- `web_search` — DuckDuckGo HTML results (titles, URLs, snippets).
+- `web_fetch` — fetch a public HTTPS page and return extracted text.
+
+Both are **read-only**: no cookies, no browser, no downloads, no file writes.
+Every call asks for approval unless `--yes` is set. Fetching is restricted to
+HTTPS on port 443 and rejects localhost/private/reserved addresses, including
+redirects. Page content is untrusted data; the system prompt tells the model to
+cite sources and not follow instructions found in pages.
+
+The shell is separate: with `--tool-policy full`, `bash` can still reach the
+network. For a strict read-only-web session, use
+`--tool-policy read-only --allow-web`.
 
 ## Model registry and presets
 

@@ -996,7 +996,7 @@ function addToolCard(name, argumentsText) {
 function finishToolCard(card, chars, preview) {
   if (!card) return;
   const shown = preview || '';
-  const denied = /^approval denied/i.test(shown);
+  const denied = /^(approval denied|web access denied)/i.test(shown);
   const dry = /^DRY-RUN/.test(shown);
   const isError = denied || /^tool error:/i.test(shown) || /\[exit [1-9]/.test(shown);
   card.querySelector('.tool-result').hidden = false;
