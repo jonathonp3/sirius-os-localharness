@@ -14,7 +14,7 @@ cp bin/harness "$DIST/bin/harness"
 cp README.md "$DIST/README.md"
 cp -r examples "$DIST/examples"
 cp -r packaging/flatpak "$DIST/flatpak"
-cp packaging/local-harness.desktop packaging/local-harness.service packaging/local-harness-window packaging/install.sh "$DIST/"
+cp packaging/local-harness.desktop packaging/local-harness.service packaging/local-harness-window packaging/install.sh packaging/org.jonathonp3.LocalHarness.svg "$DIST/"
 chmod +x "$DIST/install.sh"
 
 tar -C "$ROOT/dist" -czf "$ROOT/dist/local-harness-$VERSION.tar.gz" "local-harness-$VERSION"

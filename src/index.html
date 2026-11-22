@@ -39,6 +39,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-label { text-transform:uppercase; font-size:10px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; }
 .tool-card pre { margin:0; background:#0d0d0d; border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
 .tool-copy { float:right; background:#2a2a2a; color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:1px 6px; cursor:pointer; }
+.approval-card.resolved { opacity:.85; }
 .approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
 .approval-title { color:#f6c177; font-weight:600; margin-bottom:4px; }
 .approval-reason { color:var(--muted); font-size:12px; margin-bottom:6px; }
@@ -203,8 +204,9 @@ function finishToolCard(card, chars, preview) {
   const shown = preview || '';
   card.querySelector('.tool-result-text').textContent = shown + (chars > shown.length ? '\n… (' + chars + ' chars total)' : '');
   const status = card.querySelector('.tool-status');
-  const isError = /^tool error:/i.test(preview || '');
-  status.textContent = isError ? 'error' : 'done';
+  const denied = /^approval denied/i.test(preview || '');
+  const isError = denied || /^tool error:/i.test(preview || '');
+  status.textContent = denied ? 'denied' : isError ? 'error' : 'done';
   status.classList.add(isError ? 'error' : 'ok');
   card.classList.toggle('tool-error', isError);
   if (isError) card.open = true;
@@ -227,14 +229,19 @@ function addApprovalCard(payload) {
   card.querySelector('code').textContent = display;
   card.querySelectorAll('button').forEach((button) => {
     button.addEventListener('click', async () => {
-      card.querySelectorAll('button').forEach((other) => { other.disabled = true; });
+      card.classList.add('resolved');
+      card.querySelectorAll('button').forEach((other) => {
+        other.disabled = true;
+        if (other !== button) other.style.display = 'none';
+      });
       button.textContent = button.dataset.decision === 'approve' ? 'Approved' : 'Denied';
       try {
-        await fetch('/api/approval?token=' + encodeURIComponent(token), {
+        const response = await fetch('/api/approval?token=' + encodeURIComponent(token), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: payload.id, decision: button.dataset.decision === 'approve' }),
         });
+        if (!response.ok) add('error', await response.text());
       } catch (error) {
         add('error', String(error));
       }

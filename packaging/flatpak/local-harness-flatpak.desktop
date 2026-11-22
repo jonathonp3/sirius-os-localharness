@@ -5,5 +5,5 @@ Comment=Local-first agent harness for llama.cpp
 Exec=local-harness-flatpak
 Terminal=false
 Icon=org.jonathonp3.LocalHarness
-Categories=Development;Utility;
+Categories=Development;
 StartupNotify=false

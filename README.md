@@ -278,50 +278,21 @@ Sessions live in `~/.local/share/local-harness/sessions`.
 
 ## Native window
 
-`local-harness-window` opens the UI in a GTK4/WebKit2 window (the installed
-desktop entry uses it). It starts `harness serve` on a free loopback port,
-waits for health, and stops the server when the window closes — no Electron or
-Tauri toolchain required.
+`local-harness-window` is a GTK4/WebKit2 shell around the web UI. It connects
+to the `local-harness-flatpak` user service, starting it if needed, and leaves
+the service running when the window closes. If the service cannot start it
+falls back to launching the Flatpak host directly with an ephemeral token.
 
 ```bash
-./packaging/local-harness-window                # source tree
-./packaging/local-harness-window --self-test    # start server, print URL, exit
+./packaging/local-harness-window --self-test   # start/verify, print URL, exit
+./packaging/local-harness-window                # native window
+./packaging/local-harness-window --browser      # hand off to the browser
 ```
 
-Silverblue already ships GTK4 and WebKit2, so this is the native shell path;
-Flatpak packaging is unnecessary for a localhost-only host.
-
-
-## Flatpak (GitHub-hosted signed repo)
-
-The GitHub repo builds a signed Flatpak on every push to `main`, publishes the
-bundle as release `latest-build`, and deploys a signed repository to GitHub
-Pages (`.github/workflows/build.yml`, key
-`65269CFC0D32C2CA632C48C5F8AF682DDA82A240`).
-
-```bash
-flatpak remote-add --if-not-exists local-harness \
-  https://jonathonp3.github.io/sirius-os-localharness/local-harness.flatpakrepo
-flatpak install local-harness org.jonathonp3.LocalHarness
-```
-
-Or install the release bundle directly:
-
-```bash
-flatpak install --from local-harness-stable.flatpak
-```
-
-Local build (needs `flatpak-builder` + SDK):
-
-```bash
-./packaging/flatpak/build.sh
-```
-
-`--open` detects `FLATPAK_ID` and uses `flatpak-spawn --host xdg-open`, so the
-UI opens in the host browser while the host stays sandboxed. Nested `bwrap` is
-not permitted inside Flatpak, so plugin commands run directly inside the
-Flatpak sandbox there (on the host they still use `bwrap`). Flathub remains
-optional; see `packaging/flatpak/FLATHUB.md`.
+The installer places a host desktop entry with the same app id as the Flatpak
+(`org.jonathonp3.LocalHarness.desktop`), so the application menu launches the
+native window instead of the browser. The window does not stop a
+systemd-managed service; use `systemctl --user stop local-harness-flatpak`.
 
 ## Safety
 

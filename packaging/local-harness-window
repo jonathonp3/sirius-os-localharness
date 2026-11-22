@@ -1,101 +1,162 @@
 #!/usr/bin/env python3
-"""Native WebKitGTK window for Local Harness.
+"""Native GTK4/WebKitGTK window for Local Harness.
 
-Starts `harness serve` on a free loopback port, waits for health, then opens
-the browser UI in a GTK4/WebKit2 window. Closing the window stops the server.
+Connects to the user's local-harness-flatpak service. If the service is not
+running and starts are allowed, it starts the systemd unit (or launches the
+Flatpak host directly as a fallback).
 """
 import argparse
 import atexit
 import os
 import secrets
-import shutil
-import socket
 import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
 
-HERE = os.path.dirname(os.path.realpath(__file__))
-
-
-def default_harness():
-    for candidate in (os.path.join(HERE, "harness"), os.path.join(HERE, "..", "bin", "harness")):
-        if os.path.exists(candidate):
-            return os.path.normpath(candidate)
-    return shutil.which("harness") or os.path.join(HERE, "harness")
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "local-harness"
+ENV_FILE = CONFIG_DIR / "flatpak.env"
+UNIT_NAME = "local-harness-flatpak.service"
+APP_ID = "org.jonathonp3.LocalHarness"
 
 
-def free_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+def read_env():
+    port, token = 8787, None
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text().splitlines():
+            if line.startswith("PORT="):
+                try:
+                    port = int(line.split("=", 1)[1].strip())
+                except ValueError:
+                    pass
+            elif line.startswith("TOKEN="):
+                token = line.split("=", 1)[1].strip() or None
+    return port, token
 
 
-def wait_health(port, process, timeout=20.0):
-    url = f"http://127.0.0.1:{port}/api/health"
+def health(port, timeout=1.0):
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=timeout) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
+def wait_health(port, timeout=25.0, process=None):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if process.poll() is not None:
+        if process is not None and process.poll() is not None:
             return False
-        try:
-            with urllib.request.urlopen(url, timeout=1) as response:
-                if response.status == 200:
-                    return True
-        except Exception:
-            time.sleep(0.2)
+        if health(port):
+            return True
+        time.sleep(0.25)
     return False
+
+
+def unit_exists():
+    return (Path.home() / ".config/systemd/user" / UNIT_NAME).exists()
+
+
+def start_unit():
+    return subprocess.run(
+        ["systemctl", "--user", "start", UNIT_NAME],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
+def spawn_direct(port, token):
+    command = [
+        "flatpak", "run", "--system", "--no-session-bus", "--die-with-parent",
+        "--command=harness", APP_ID,
+        "--workspace", str(Path.home()), "--tool-policy", "full",
+        "serve", "--max-depth", "0", "--port", str(port), "--token", token,
+    ]
+    return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def stop_process(process):
+    if process is not None and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=4)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def ensure_service(port, token, allow_start):
+    if health(port):
+        return None
+    if allow_start and token and unit_exists():
+        start_unit()
+        if wait_health(port):
+            return None
+    if allow_start:
+        token = token or secrets.token_hex(16)
+        process = spawn_direct(port, token)
+        if wait_health(port, process=process):
+            return process
+        stop_process(process)
+    return None
 
 
 def main():
     parser = argparse.ArgumentParser(description="Local Harness native window")
-    parser.add_argument("--workspace", default=os.getcwd())
-    parser.add_argument("--harness", default=os.environ.get("LOCAL_HARNESS_BIN") or default_harness())
-    parser.add_argument("--self-test", action="store_true", help="start the server, print the URL, then exit")
+    parser.add_argument("--self-test", action="store_true", help="start/verify the host, print the URL, exit")
+    parser.add_argument("--browser", action="store_true", help="open the UI in the default browser")
+    parser.add_argument("--no-start", action="store_true", help="do not start the host if it is down")
     args = parser.parse_args()
 
-    if not os.path.exists(args.harness):
-        print(f"harness binary not found: {args.harness}", file=sys.stderr)
+    port, token = read_env()
+    process = ensure_service(port, token, not args.no_start)
+    if not health(port):
+        print("Local Harness host is not running and could not be started", file=sys.stderr)
+        stop_process(process)
         return 1
 
-    port = free_port()
-    token = secrets.token_hex(16)
-    command = [args.harness, "serve", "--port", str(port), "--token", token, "--workspace", args.workspace]
-    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    url = f"http://127.0.0.1:{port}/?token={token}" if token else f"http://127.0.0.1:{port}/"
+    print(url)
+    atexit.register(lambda: stop_process(process))
 
-    def stop():
-        if process.poll() is None:
-            process.terminate()
-
-    atexit.register(stop)
-
-    if not wait_health(port, process):
-        print("Local Harness server failed to start", file=sys.stderr)
-        stop()
-        return 1
-
-    url = f"http://127.0.0.1:{port}/?token={token}"
     if args.self_test:
-        print(url)
-        stop()
+        stop_process(process)
+        return 0
+    if args.browser:
+        subprocess.Popen(["xdg-open", url])
+        stop_process(process)
         return 0
 
     import gi
+
     gi.require_version("Gtk", "4.0")
     gi.require_version("WebKit2", "4.1")
     from gi.repository import Gtk, WebKit2
 
-    app = Gtk.Application(application_id="org.jonathonp3.LocalHarness")
+    app = Gtk.Application(application_id=f"{APP_ID}.Native")
 
     def on_activate(app):
         window = Gtk.ApplicationWindow(application=app, title="Local Harness")
         window.set_default_size(1100, 800)
+        header = Gtk.HeaderBar()
+        window.set_titlebar(header)
+
         webview = WebKit2.WebView()
         webview.load_uri(url)
+
+        reload = Gtk.Button(label="Reload")
+        reload.connect("clicked", lambda _button: webview.reload())
+        header.pack_start(reload)
+
+        browser = Gtk.Button(label="Browser")
+        browser.connect("clicked", lambda _button: subprocess.Popen(["xdg-open", url]))
+        header.pack_end(browser)
+
         window.set_child(webview)
         window.present()
 
     app.connect("activate", on_activate)
-    app.connect("shutdown", lambda _app: stop())
+    app.connect("shutdown", lambda _app: stop_process(process))
     app.run([])
     return 0
 
