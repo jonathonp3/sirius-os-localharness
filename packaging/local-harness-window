@@ -7,6 +7,7 @@ Flatpak host directly as a fallback).
 """
 import argparse
 import atexit
+import json
 import os
 import secrets
 import subprocess
@@ -131,7 +132,7 @@ def main():
 
     gi.require_version("Gtk", "4.0")
     gi.require_version("WebKit", "6.0")
-    from gi.repository import Gtk, WebKit
+    from gi.repository import Gtk, Gdk, WebKit
 
     app = Gtk.Application(application_id=f"{APP_ID}.Native")
 
@@ -141,7 +142,33 @@ def main():
         header = Gtk.HeaderBar()
         window.set_titlebar(header)
 
-        webview = WebKit.WebView()
+        manager = WebKit.UserContentManager()
+
+        def on_clipboard_message(_manager, value):
+            try:
+                request = value.to_string()
+            except Exception:
+                return
+            if request != "read":
+                return
+            display = Gdk.Display.get_default()
+            if display is None:
+                return
+            clipboard = display.get_clipboard()
+
+            def finished(source, result, _data):
+                try:
+                    text = source.read_text_finish(result) or ""
+                except Exception:
+                    text = ""
+                script = "window.__harnessClipboardText(" + json.dumps(text) + ");"
+                webview.evaluate_javascript(script, -1, None, None, None, None, None)
+
+            clipboard.read_text_async(None, finished, None)
+
+        manager.register_script_message_handler("clipboard")
+        manager.connect("script-message-received::clipboard", on_clipboard_message)
+        webview = WebKit.WebView(user_content_manager=manager)
         # The GTK context menu has no spelling dictionary; the page provides
         # its own menu (spelling + basic edit actions) via the DOM event.
         webview.connect("context-menu", lambda *args: True)

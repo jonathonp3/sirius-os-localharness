@@ -346,7 +346,9 @@ The custom menu includes an 80-emoji picker; the old WebKit “insert unicode”
 item is not included. Keyboard clipboard shortcuts still work.
 
 The dictionary and Typo.js are bundled under `src/assets/` and served locally;
-no network lookup is used.
+no network lookup is used. In the native window, the menu's Paste action reads
+the system clipboard through a small GTK bridge; browser mode uses the
+Clipboard API.
 
 ## Interface scale
 

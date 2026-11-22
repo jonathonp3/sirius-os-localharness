@@ -329,6 +329,50 @@ async function writeClipboard(text) {
   }
 }
 
+let clipboardBridgeResolve = null;
+
+window.__harnessClipboardText = (text) => {
+  const resolve = clipboardBridgeResolve;
+  clipboardBridgeResolve = null;
+  if (resolve) resolve(text);
+};
+
+function clipboardBridge() {
+  return window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.clipboard;
+}
+
+async function readClipboardText() {
+  const bridge = clipboardBridge();
+  if (bridge) {
+    const bridged = await new Promise((resolve) => {
+      clipboardBridgeResolve = resolve;
+      bridge.postMessage('read');
+      setTimeout(() => {
+        if (clipboardBridgeResolve === resolve) {
+          clipboardBridgeResolve = null;
+          resolve(null);
+        }
+      }, 2500);
+    });
+    if (bridged !== null) return bridged;
+  }
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    try { return await navigator.clipboard.readText(); } catch (error) {}
+  }
+  if (navigator.clipboard && navigator.clipboard.read) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        if (item.types.includes('text/plain')) {
+          const blob = await item.getType('text/plain');
+          return await blob.text();
+        }
+      }
+    } catch (error) {}
+  }
+  return null;
+}
+
 function showEmojiPicker(start, end, x, y) {
   if (!spellMenu) return;
   spellMenu.innerHTML = '';
@@ -390,7 +434,7 @@ function showContextMenu(x, y, spelling) {
   const end = promptEl.selectionEnd;
   const selected = promptEl.value.slice(start, end);
   const hasSelection = end > start;
-  const canClipboard = Boolean(navigator.clipboard);
+  const canPaste = Boolean(clipboardBridge() || (navigator.clipboard && (navigator.clipboard.readText || navigator.clipboard.read)));
 
   menuButton('Cut', async () => {
     if (await writeClipboard(selected)) {
@@ -401,14 +445,12 @@ function showContextMenu(x, y, spelling) {
   }, !hasSelection);
   menuButton('Copy', () => writeClipboard(selected), !hasSelection);
   menuButton('Paste', async () => {
-    if (!navigator.clipboard) return;
-    try {
-      const text = await navigator.clipboard.readText();
-      promptEl.setRangeText(text, start, end, 'end');
-      promptEl.dispatchEvent(new Event('input'));
-      promptEl.focus();
-    } catch (error) {}
-  }, !canClipboard);
+    const text = await readClipboardText();
+    if (text === null) return;
+    promptEl.setRangeText(text, start, end, 'end');
+    promptEl.dispatchEvent(new Event('input'));
+    promptEl.focus();
+  }, !canPaste);
   menuButton('Delete', () => {
     promptEl.setRangeText('', start, end, 'end');
     promptEl.dispatchEvent(new Event('input'));
