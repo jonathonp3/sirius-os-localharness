@@ -332,8 +332,9 @@ instead of reproducing the full transcript.
 ## Prompt sizing
 
 The prompt box grows automatically as lines are added, up to roughly 65% of the
-window height (max 700px). Past that it scrolls. This replaces the old fixed
-single-line-height prompt; no manual drag handle is needed.
+window height (max 700px). Past that it scrolls. The prompt and the button row
+are separate bars: the prompt bar grows, while the fixed button bar stays at the
+bottom with the same background as the prompt bar.
 
 ## Spellcheck
 
