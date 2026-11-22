@@ -421,9 +421,10 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          {delegation}\
          - Answer directly; do not produce long deliberation.\n\
          Formatting:\n\
-         - Use Markdown: short paragraphs, \"- \" bullet lists with one item per line, and fenced code blocks with a language tag.\n\
-         - Preserve line breaks; never collapse a list or command output into one sentence.\n\
-         - When listing directory contents, put one path per bullet.",
+         - Use compact Markdown. Prefer short \"- \" bullets, one fact per line, over long paragraphs.\n\
+         - Use fenced code blocks with a language tag for code and commands.\n\
+         - For large directory listings or command output, summarize counts/categories and list at most 10 relevant entries; never reproduce the full raw listing.\n\
+         - Do not repeat tool output verbatim; summarize it.",
         workspace.display(),
         if tools.is_empty() { "none".to_string() } else { tools.join(", ") }
     )

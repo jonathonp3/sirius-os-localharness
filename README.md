@@ -327,6 +327,17 @@ choice in `localStorage`:
 The selected theme also themes code blocks and tool cards, not just the page
 background. `themes/README.md` documents the XML-to-UI mapping.
 
+Answers are guided toward compact bullet lists; for large directory listings
+or command output the agent summarizes and lists at most ten relevant entries
+instead of reproducing the full transcript.
+
+## Spellcheck
+
+The prompt field has a **Spell** toggle (enabled by default, remembered in
+`localStorage`). It sets `spellcheck="true"` with `lang="en-AU"`; right-click
+suggestions come from the browser's dictionary. The native WebKit window also
+enables WebKit's spellchecking and grammar checking in its settings.
+
 ## Safety
 
 - `read_file` / `list_dir` resolve and canonicalize paths and reject anything
