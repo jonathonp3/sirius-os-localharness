@@ -23,6 +23,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use crate::agent::{self, EventSink};
 use crate::approval::{self, ApprovalRequest, Approver};
 use crate::session::Session;
+use crate::tools;
 
 const INDEX: &str = include_str!("index.html");
 const MARKDOWN_JS: &str = include_str!("assets/markdown-it.min.js");
@@ -73,6 +74,7 @@ pub async fn run(
         .route("/api/models", get(models))
         .route("/api/chat", post(chat))
         .route("/api/approval", post(approval))
+        .route("/api/shell", post(shell))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
@@ -235,6 +237,54 @@ async fn chat(
     Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
 }
 
+async fn shell(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<ShellBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let command = body.command.trim();
+    if command.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "command is empty" }))).into_response();
+    }
+    let args = json!({ "command": command }).to_string();
+    let reason = tools::destructive_reason("bash", &args);
+    if let Some(reason) = &reason {
+        if !state.config.dry_run && !state.auto_approve && !body.confirm {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "requires_approval": true, "reason": reason })),
+            )
+                .into_response();
+        }
+    }
+
+    let toolset = tools::ToolSet::new(
+        state.config.workspace.clone(),
+        state.config.policy,
+        state.config.plugins.clone(),
+        state.config.mcp.clone(),
+        state.config.scopes.clone(),
+        state.config.dry_run,
+    );
+    match toolset.execute("bash", &args).await {
+        Ok(output) => Json(json!({
+            "output": output,
+            "dry_run": state.config.dry_run,
+            "approved": reason.is_some() && !state.config.dry_run,
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("{error:#}") })),
+        )
+            .into_response(),
+    }
+}
+
 async fn approval(
     State(state): State<Arc<AppState>>,
     Query(query): Query<AuthQuery>,
@@ -309,6 +359,13 @@ struct ChatBody {
 struct ApprovalBody {
     id: String,
     decision: bool,
+}
+
+#[derive(Deserialize)]
+struct ShellBody {
+    command: String,
+    #[serde(default)]
+    confirm: bool,
 }
 
 enum SseEvent {

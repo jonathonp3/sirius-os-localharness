@@ -28,7 +28,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .assistant hr { border:0; border-top:1px solid var(--border); margin:10px 0; }
 .copy-btn { position:absolute; top:4px; right:4px; background:#2a2a2a; color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:2px 6px; cursor:pointer; opacity:0; transition:opacity .15s; }
 .assistant pre:hover .copy-btn, .copy-btn:focus { opacity:1; }
-.tool-card { align-self:flex-start; width:min(760px,92%); background:#151515; border:1px solid var(--border); border-radius:8px; font:12px ui-monospace, monospace; color:var(--muted); }
+.tool-card { align-self:flex-start; width:min(760px,92%); background:var(--panel); border:1px solid var(--border); border-radius:8px; font:12px ui-monospace, monospace; color:var(--muted); }
 .tool-card summary { cursor:pointer; padding:6px 10px; color:var(--text); }
 .tool-card[open] summary { border-bottom:1px solid var(--border); }
 .tool-card summary code { color:var(--accent); }
@@ -37,7 +37,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-status.error { color:#fc8181; }
 .tool-block { padding:6px 10px; }
 .tool-label { text-transform:uppercase; font-size:10px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; }
-.tool-card pre { margin:0; background:#0d0d0d; border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
+.tool-card pre { margin:0; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
 .tool-copy { float:right; background:#2a2a2a; color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:1px 6px; cursor:pointer; }
 .approval-card.resolved { opacity:.85; }
 .approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
@@ -49,6 +49,20 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .approval-actions button[data-decision="approve"] { background:#68d391; color:#08110c; }
 .approval-actions button[data-decision="deny"] { background:#3a3a3a; color:var(--text); }
 .approval-actions button:disabled { opacity:.5; cursor:default; }
+header select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px; }
+#mode { background:#3a3a3a; color:var(--text); }
+#mode.active { background:var(--accent); color:#08111f; }
+.terminal { align-self:flex-start; width:min(860px,96%); background:#0b0b0b; border:1px solid #2a2a2a; border-radius:10px; overflow:hidden; font:13px ui-monospace, monospace; }
+.terminal-head { display:flex; align-items:center; gap:6px; padding:6px 10px; background:#1b1b1b; border-bottom:1px solid #2a2a2a; color:#9a9a9a; font-size:11px; }
+.terminal-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+.terminal-title { margin-left:6px; }
+.terminal-copy { margin-left:auto; float:none; }
+.terminal-body { padding:10px 12px; white-space:pre-wrap; max-height:420px; overflow:auto; }
+.terminal-prompt { color:#6ea8fe; }
+.terminal-output { margin:6px 0 0; white-space:pre-wrap; color:#e6e6e6; font:inherit; }
+.terminal-exit { margin-top:6px; color:#9a9a9a; font-size:11px; }
+.terminal-exit.ok { color:#68d391; }
+.terminal-exit.error { color:#fc8181; }
 form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; background:var(--panel); }
 textarea { flex:1; resize:none; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; font:inherit; min-height:44px; max-height:180px; }
 button { background:var(--accent); color:#08111f; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
@@ -69,10 +83,19 @@ button:disabled { opacity:.5; cursor:default; }
 <link rel="stylesheet" href="/assets/highlight.css">
 </head>
 <body>
-<header><h1>Local Harness</h1><span id="status">ready</span></header>
+<header><h1>Local Harness</h1>
+<select id="theme" title="Theme">
+<option value="dark">Dark</option>
+<option value="midnight">Midnight</option>
+<option value="solarized">Solarized</option>
+<option value="light">Light</option>
+<option value="sepia">Sepia</option>
+</select>
+<span id="status">ready</span></header>
 <main id="log"></main>
 <form id="form">
 <textarea id="prompt" placeholder="Ask the local model… (Enter to send, Shift+Enter for a newline)" autofocus></textarea>
+<button id="mode" type="button" title="Toggle direct shell mode">Shell</button>
 <button id="stop" type="button" disabled>Stop</button>
 <button id="send" type="submit">Send</button>
 </form>
@@ -87,8 +110,11 @@ const form = document.getElementById('form');
 const promptEl = document.getElementById('prompt');
 const sendEl = document.getElementById('send');
 const stopEl = document.getElementById('stop');
+const themeEl = document.getElementById('theme');
+const modeEl = document.getElementById('mode');
 
 let controller = null;
+let shellMode = localStorage.getItem('localHarnessShellMode') === '1';
 
 let assistantEl = null;
 let openTool = null;
@@ -109,6 +135,44 @@ function add(className, text = '') {
 }
 
 if (!token) setStatus('missing token in URL', true);
+
+const themes = {
+  dark: { bg: '#111111', panel: '#1a1a1a', text: '#e8e8e8', muted: '#9a9a9a', border: '#2a2a2a' },
+  midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40' },
+  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59' },
+  light: { bg: '#f5f5f5', panel: '#ffffff', text: '#222222', muted: '#666666', border: '#dddddd' },
+  sepia: { bg: '#f4ecd8', panel: '#fbf6e9', text: '#3a3226', muted: '#7a6a55', border: '#ddd0b8' },
+};
+
+function applyTheme(name) {
+  const theme = themes[name] || themes.dark;
+  const root = document.documentElement;
+  root.style.setProperty('--bg', theme.bg);
+  root.style.setProperty('--panel', theme.panel);
+  root.style.setProperty('--text', theme.text);
+  root.style.setProperty('--muted', theme.muted);
+  root.style.setProperty('--border', theme.border);
+  themeEl.value = name;
+  localStorage.setItem('localHarnessTheme', name);
+}
+
+themeEl.addEventListener('change', () => applyTheme(themeEl.value));
+applyTheme(localStorage.getItem('localHarnessTheme') || 'dark');
+
+function setShellMode(enabled) {
+  shellMode = enabled;
+  modeEl.classList.toggle('active', enabled);
+  modeEl.textContent = enabled ? 'Shell ✓' : 'Shell';
+  promptEl.placeholder = enabled
+    ? 'Enter a shell command… (Enter to run)'
+    : 'Ask the local model… (Enter to send, Shift+Enter for a newline)';
+  sendEl.textContent = enabled ? 'Run' : 'Send';
+  localStorage.setItem('localHarnessShellMode', enabled ? '1' : '0');
+}
+
+modeEl.addEventListener('click', () => setShellMode(!shellMode));
+setShellMode(shellMode);
+
 
 function escapeHtml(text) {
   return text.replace(/[&<>]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[character]));
@@ -167,7 +231,102 @@ function prettyJson(value) {
   try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
 }
 
+function addTerminalCard(command) {
+  const card = document.createElement('div');
+  card.className = 'terminal';
+  card.innerHTML = '<div class="terminal-head"><span class="terminal-dot" style="background:#ff5f57"></span><span class="terminal-dot" style="background:#febc2e"></span><span class="terminal-dot" style="background:#28c840"></span><span class="terminal-title">Terminal</span><button type="button" class="tool-copy terminal-copy">copy command</button></div><div class="terminal-body"><div class="terminal-prompt">$ <span class="terminal-cmd"></span></div><pre class="terminal-output"></pre><div class="terminal-exit">running…</div></div>';
+  card.querySelector('.terminal-cmd').textContent = command;
+  const copy = card.querySelector('.terminal-copy');
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      copy.textContent = 'copied';
+      setTimeout(() => { copy.textContent = 'copy command'; }, 1200);
+    } catch (error) {
+      copy.textContent = 'failed';
+    }
+  });
+  log.appendChild(card);
+  log.scrollTop = log.scrollHeight;
+  return card;
+}
+
+function setTerminalResult(card, output, status) {
+  card.querySelector('.terminal-output').textContent = output || '';
+  const exit = card.querySelector('.terminal-exit');
+  exit.textContent = status;
+  exit.className = 'terminal-exit ' + ((status === 'error' || status === 'denied') ? 'error' : 'ok');
+  log.scrollTop = log.scrollHeight;
+}
+
+function askShellApproval(reason, command) {
+  return new Promise((resolve) => {
+    const card = document.createElement('div');
+    card.className = 'approval-card';
+    card.innerHTML = '<div class="approval-title">⚠ Approval required</div>'
+      + '<div class="approval-reason"></div>'
+      + '<pre><code></code></pre>'
+      + '<div class="approval-actions"><button type="button" data-decision="approve">Run</button><button type="button" data-decision="deny">Deny</button></div>';
+    card.querySelector('.approval-reason').textContent = reason;
+    card.querySelector('code').textContent = command;
+    card.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        card.classList.add('resolved');
+        card.querySelectorAll('button').forEach((other) => {
+          other.disabled = true;
+          if (other !== button) other.style.display = 'none';
+        });
+        button.textContent = button.dataset.decision === 'approve' ? 'Approved' : 'Denied';
+        resolve(button.dataset.decision === 'approve');
+      });
+    });
+    log.appendChild(card);
+    log.scrollTop = log.scrollHeight;
+  });
+}
+
+async function runShell(command) {
+  const card = addTerminalCard(command);
+  try {
+    let response = await fetch('/api/shell?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+    });
+    if (response.status === 403) {
+      const info = await response.json().catch(() => ({}));
+      if (info.requires_approval) {
+        const approved = await askShellApproval(info.reason || 'destructive command', command);
+        if (!approved) {
+          setTerminalResult(card, 'approval denied by user', 'denied');
+          return;
+        }
+        response = await fetch('/api/shell?token=' + encodeURIComponent(token), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command, confirm: true }),
+        });
+      }
+    }
+    const info = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setTerminalResult(card, info.error || info.reason || ('HTTP ' + response.status), 'error');
+      return;
+    }
+    const output = info.output || '';
+    const isError = /^tool error/i.test(output) || /\n\[exit [1-9]/.test(output);
+    setTerminalResult(card, output, info.dry_run ? 'dry-run' : isError ? 'error' : 'done');
+  } catch (error) {
+    setTerminalResult(card, String(error), 'error');
+  }
+}
+
 function addToolCard(name, argumentsText) {
+  if (name === 'bash') {
+    let command = argumentsText;
+    try { command = JSON.parse(argumentsText).command || argumentsText; } catch (error) {}
+    return addTerminalCard(command);
+  }
   const card = document.createElement('details');
   card.className = 'tool-card';
   card.innerHTML = '<summary>🔧 <code>' + escapeHtml(name) + '</code> <span class="tool-status">running…</span></summary>'
@@ -200,54 +359,21 @@ function addToolCard(name, argumentsText) {
 
 function finishToolCard(card, chars, preview) {
   if (!card) return;
-  card.querySelector('.tool-result').hidden = false;
   const shown = preview || '';
+  const denied = /^approval denied/i.test(shown);
+  const dry = /^DRY-RUN/.test(shown);
+  const isError = denied || /^tool error:/i.test(shown) || /\[exit [1-9]/.test(shown);
+  if (card.classList.contains('terminal')) {
+    setTerminalResult(card, shown + (chars > shown.length ? '\n… (' + chars + ' chars total)' : ''), denied ? 'denied' : dry ? 'dry-run' : isError ? 'error' : 'done');
+    return;
+  }
+  card.querySelector('.tool-result').hidden = false;
   card.querySelector('.tool-result-text').textContent = shown + (chars > shown.length ? '\n… (' + chars + ' chars total)' : '');
   const status = card.querySelector('.tool-status');
-  const denied = /^approval denied/i.test(preview || '');
-  const isError = denied || /^tool error:/i.test(preview || '');
   status.textContent = denied ? 'denied' : isError ? 'error' : 'done';
   status.classList.add(isError ? 'error' : 'ok');
   card.classList.toggle('tool-error', isError);
   if (isError) card.open = true;
-  log.scrollTop = log.scrollHeight;
-}
-
-function addApprovalCard(payload) {
-  const card = document.createElement('div');
-  card.className = 'approval-card';
-  let display = payload.arguments;
-  try {
-    const parsed = JSON.parse(payload.arguments);
-    display = parsed.command || JSON.stringify(parsed, null, 2);
-  } catch (error) {}
-  card.innerHTML = '<div class="approval-title">⚠ Approval required</div>'
-    + '<div class="approval-reason"></div>'
-    + '<pre><code></code></pre>'
-    + '<div class="approval-actions"><button type="button" data-decision="approve">Run</button><button type="button" data-decision="deny">Deny</button></div>';
-  card.querySelector('.approval-reason').textContent = payload.reason;
-  card.querySelector('code').textContent = display;
-  card.querySelectorAll('button').forEach((button) => {
-    button.addEventListener('click', async () => {
-      card.classList.add('resolved');
-      card.querySelectorAll('button').forEach((other) => {
-        other.disabled = true;
-        if (other !== button) other.style.display = 'none';
-      });
-      button.textContent = button.dataset.decision === 'approve' ? 'Approved' : 'Denied';
-      try {
-        const response = await fetch('/api/approval?token=' + encodeURIComponent(token), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: payload.id, decision: button.dataset.decision === 'approve' }),
-        });
-        if (!response.ok) add('error', await response.text());
-      } catch (error) {
-        add('error', String(error));
-      }
-    });
-  });
-  log.appendChild(card);
   log.scrollTop = log.scrollHeight;
 }
 
@@ -302,6 +428,21 @@ function handleBlock(block) {
 async function send() {
   const text = promptEl.value.trim();
   if (!text || !token || sendEl.disabled) return;
+  if (shellMode || /^[!$]\s*/.test(text)) {
+    const command = text.replace(/^[!$]\s*/, '');
+    promptEl.value = '';
+    if (!command) return;
+    sendEl.disabled = true;
+    setStatus('running');
+    try {
+      await runShell(command);
+    } finally {
+      sendEl.disabled = false;
+      setStatus('ready');
+      promptEl.focus();
+    }
+    return;
+  }
   add('user', text);
   promptEl.value = '';
   sendEl.disabled = true;

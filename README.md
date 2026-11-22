@@ -294,6 +294,27 @@ The installer places a host desktop entry with the same app id as the Flatpak
 native window instead of the browser. The window does not stop a
 systemd-managed service; use `systemctl --user stop local-harness-flatpak`.
 
+
+## Terminal mode and themes
+
+The prompt has a **Shell** toggle. When active, input runs directly through
+`/api/shell` without the model and renders as a terminal (prompt, output,
+status, copy command). A leading `!` or `$` does the same for one command
+without toggling.
+
+```text
+!ls -l .local
+$ git status
+```
+
+Direct shell commands respect the same policy, dry-run mode, and destructive
+classification as agent tool calls. A destructive command first shows the
+approval card; approving resends it with explicit confirmation. Chat-mode
+`bash` tool calls also render as terminal cards.
+
+The header theme selector switches background/palette presets (Dark, Midnight,
+Solarized, Light, Sepia) and remembers the choice in `localStorage`.
+
 ## Safety
 
 - `read_file` / `list_dir` resolve and canonicalize paths and reject anything
@@ -305,8 +326,8 @@ systemd-managed service; use `systemctl --user stop local-harness-flatpak`.
 ### Guardrails
 
 - **Dry run** — `--dry-run` reports every mutating tool call
-  (`bash`, `write_file`, plugins, MCP) without executing it; read tools still
-  work. Tool results are prefixed `DRY-RUN — NOT EXECUTED`, and the agent
+  (`bash`, `write_file`, plugins, MCP, direct shell) without executing it;
+  read tools still work. Tool results are prefixed `DRY-RUN — NOT EXECUTED`, and the agent
   finishes with a “no changes were made” notice.
 - **Destructive command approval** — commands matching high-risk patterns
   (`rm`, `dd`, `mkfs`, `sudo`, `git reset --hard`, `git push --force`,
