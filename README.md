@@ -295,6 +295,21 @@ native window instead of the browser. The window does not stop a
 systemd-managed service; use `systemctl --user stop local-harness-flatpak`.
 
 
+## Copying tool output
+
+Tool cards have three copy actions:
+
+- **copy command** — only the shell command (safe to paste and run);
+- **copy output** — raw output for an editor or document;
+- **copy as comment** — every output line prefixed with `#`, so pasting it
+  into a shell cannot execute it.
+
+Card labels are non-selectable, so selecting the card and copying picks up the
+arguments/output values rather than the `ARGUMENTS`/`RESULT` chrome. Raw
+`ls -l` output is not a shell command: pasting it into bash runs each line as a
+command (`total: command not found`, etc.). Use **copy command** to re-run, or
+**copy as comment** when pasting into a terminal.
+
 ## Themes
 
 The header theme selector switches background/palette presets and remembers the

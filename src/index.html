@@ -37,9 +37,11 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-status.ok { color:#68d391; }
 .tool-status.error { color:#fc8181; }
 .tool-block { padding:6px 10px; }
-.tool-label { text-transform:uppercase; font-size:10px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; }
+.tool-label { text-transform:uppercase; font-size:10px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; display:flex; justify-content:space-between; align-items:center; gap:6px; user-select:none; }
+.tool-buttons { display:flex; gap:4px; user-select:none; }
+.tool-card summary { user-select:none; }
 .tool-card pre { margin:0; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
-.tool-copy { float:right; background:var(--panel); color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:1px 6px; cursor:pointer; }
+.tool-copy { float:none; text-transform:none; background:var(--panel); color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:1px 6px; cursor:pointer; }
 .approval-card.resolved { opacity:.85; }
 .approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
 .approval-title { color:#f6c177; font-weight:600; margin-bottom:4px; }
@@ -232,32 +234,56 @@ function prettyJson(value) {
   try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
 }
 
+function copyButton(label, getValue, title) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tool-copy';
+  button.textContent = label;
+  if (title) button.title = title;
+  button.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(getValue());
+      button.textContent = 'copied';
+      setTimeout(() => { button.textContent = label; }, 1200);
+    } catch (error) {
+      button.textContent = 'failed';
+    }
+  });
+  return button;
+}
+
 function addToolCard(name, argumentsText) {
   const card = document.createElement('details');
   card.className = 'tool-card';
   card.innerHTML = '<summary>🔧 <code>' + escapeHtml(name) + '</code> <span class="tool-status">running…</span></summary>'
-    + '<div class="tool-block"><div class="tool-label">arguments</div><pre><code class="tool-args"></code></pre></div>'
-    + '<div class="tool-block tool-result" hidden><div class="tool-label">result</div><pre><code class="tool-result-text"></code></pre></div>';
-  card.querySelector('.tool-args').textContent = prettyJson(argumentsText);
-  const copy = document.createElement('button');
-  copy.type = 'button';
-  copy.className = 'tool-copy';
-  copy.textContent = name === 'bash' ? 'copy command' : 'copy args';
-  copy.addEventListener('click', async () => {
-    let value = argumentsText;
+    + '<div class="tool-block"><div class="tool-label">arguments<span class="tool-buttons"></span></div><pre><code class="tool-args"></code></pre></div>'
+    + '<div class="tool-block tool-result" hidden><div class="tool-label">result<span class="tool-buttons"></span></div><pre><code class="tool-result-text"></code></pre></div>';
+  const commandValue = () => {
     try {
       const parsed = JSON.parse(argumentsText);
-      value = parsed.command || JSON.stringify(parsed, null, 2);
-    } catch (error) {}
-    try {
-      await navigator.clipboard.writeText(value);
-      copy.textContent = 'copied';
-      setTimeout(() => { copy.textContent = name === 'bash' ? 'copy command' : 'copy args'; }, 1200);
+      return parsed.command || JSON.stringify(parsed, null, 2);
     } catch (error) {
-      copy.textContent = 'failed';
+      return argumentsText;
     }
-  });
-  card.querySelector('.tool-block .tool-label').appendChild(copy);
+  };
+  card.querySelector('.tool-args').textContent = name === 'bash' ? commandValue() : prettyJson(argumentsText);
+  if (name === 'bash') {
+    card.querySelector('.tool-block:not(.tool-result) .tool-label').firstChild.textContent = 'command';
+  }
+  card.querySelector('.tool-block:not(.tool-result) .tool-buttons').appendChild(
+    copyButton(name === 'bash' ? 'copy command' : 'copy args', commandValue,
+      name === 'bash' ? 'Copy only the command, safe to paste into a shell' : 'Copy the tool arguments')
+  );
+
+  const outputValue = () => card.querySelector('.tool-result-text').textContent;
+  card.querySelector('.tool-result .tool-buttons').appendChild(
+    copyButton('copy output', outputValue, 'Copy raw output. Do not paste raw output into a shell — it will run the lines as commands.')
+  );
+  card.querySelector('.tool-result .tool-buttons').appendChild(
+    copyButton('copy as comment', () => outputValue().split('\n').map((line) => line ? '# ' + line : '#').join('\n'),
+      'Copy output prefixed with #, safe to paste into a shell')
+  );
+
   log.appendChild(card);
   log.scrollTop = log.scrollHeight;
   return card;
