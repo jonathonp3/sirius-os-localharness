@@ -1,9 +1,11 @@
 //! HTTP + SSE host. The browser client consumes the same agent loop as the CLI.
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use anyhow::{Context, Result};
 use axum::extract::{Path, Query, State};
@@ -15,10 +17,11 @@ use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::{Mutex, Semaphore, mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::agent::{self, EventSink};
+use crate::approval::{self, ApprovalRequest, Approver};
 use crate::session::Session;
 
 const INDEX: &str = include_str!("index.html");
@@ -35,6 +38,8 @@ struct AppState {
     slots: Semaphore,
     concurrency: usize,
     queued: AtomicUsize,
+    pending_approvals: Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>,
+    auto_approve: bool,
 }
 
 pub async fn run(
@@ -44,6 +49,7 @@ pub async fn run(
     token: Option<String>,
     open: bool,
     concurrency: usize,
+    auto_approve: bool,
 ) -> Result<()> {
     let token = match token {
         Some(token) => token,
@@ -57,6 +63,8 @@ pub async fn run(
         slots: Semaphore::new(concurrency),
         concurrency,
         queued: AtomicUsize::new(0),
+        pending_approvals: Arc::new(Mutex::new(HashMap::new())),
+        auto_approve,
     });
     let app = Router::new()
         .route("/", get(index))
@@ -64,6 +72,7 @@ pub async fn run(
         .route("/api/health", get(health))
         .route("/api/models", get(models))
         .route("/api/chat", post(chat))
+        .route("/api/approval", post(approval))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
@@ -179,6 +188,16 @@ async fn chat(
         };
         let mut config = task_state.config.clone();
         config.cancel = Some(task_cancel.clone());
+        config.approver = if task_state.auto_approve {
+            approval::auto()
+        } else {
+            Arc::new(SseApprover {
+                tx: tx.clone(),
+                pending: task_state.pending_approvals.clone(),
+                session: session.id.clone(),
+                counter: AtomicU64::new(0),
+            })
+        };
         let mut sink = ChannelSink { tx: tx.clone() };
         match agent::run(config, &session, body.prompt.as_str(), Vec::new(), &mut sink).await {
             Ok(outcome) => {
@@ -214,6 +233,25 @@ async fn chat(
         Ok::<_, Infallible>(to_event(event))
     });
     Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+}
+
+async fn approval(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<ApprovalBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let sender = state.pending_approvals.lock().await.remove(&body.id);
+    match sender {
+        Some(sender) => {
+            let _ = sender.send(body.decision);
+            (StatusCode::OK, "ok").into_response()
+        }
+        None => (StatusCode::NOT_FOUND, "unknown or expired approval").into_response(),
+    }
 }
 
 fn unauthorized() -> Response {
@@ -267,6 +305,12 @@ struct ChatBody {
     prompt: String,
 }
 
+#[derive(Deserialize)]
+struct ApprovalBody {
+    id: String,
+    decision: bool,
+}
+
 enum SseEvent {
     Queued { position: usize, slots: usize },
     Token(String),
@@ -274,6 +318,7 @@ enum SseEvent {
     ToolCall { name: String, arguments: String },
     ToolResult { chars: usize, preview: String },
     Notice(String),
+    Approval { id: String, name: String, arguments: String, reason: String },
     Done { session: String, prompt_tokens: u64, completion_tokens: u64, cached_tokens: u64 },
     Error { message: String },
 }
@@ -290,6 +335,9 @@ fn to_event(event: SseEvent) -> Event {
             .event("tool_result")
             .data(json!({ "chars": chars, "preview": preview }).to_string()),
         SseEvent::Notice(message) => Event::default().event("notice").data(json!({ "message": message }).to_string()),
+        SseEvent::Approval { id, name, arguments, reason } => Event::default()
+            .event("approval")
+            .data(json!({ "id": id, "name": name, "arguments": arguments, "reason": reason }).to_string()),
         SseEvent::Done { session, prompt_tokens, completion_tokens, cached_tokens } => Event::default()
             .event("done")
             .data(
@@ -312,6 +360,39 @@ struct CancelOnDrop(Arc<AtomicBool>);
 impl Drop for CancelOnDrop {
     fn drop(&mut self) {
         self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+struct SseApprover {
+    tx: mpsc::UnboundedSender<SseEvent>,
+    pending: Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>,
+    session: String,
+    counter: AtomicU64,
+}
+
+#[async_trait::async_trait]
+impl Approver for SseApprover {
+    async fn approve(&self, request: &ApprovalRequest) -> bool {
+        let id = format!(
+            "{}-{}",
+            self.session,
+            self.counter.fetch_add(1, Ordering::SeqCst)
+        );
+        let (sender, receiver) = oneshot::channel();
+        self.pending.lock().await.insert(id.clone(), sender);
+        let _ = self.tx.send(SseEvent::Approval {
+            id: id.clone(),
+            name: request.name.clone(),
+            arguments: request.arguments.clone(),
+            reason: request.reason.clone(),
+        });
+        let decision = tokio::time::timeout(Duration::from_secs(120), receiver)
+            .await
+            .ok()
+            .and_then(|result| result.ok())
+            .unwrap_or(false);
+        self.pending.lock().await.remove(&id);
+        decision
     }
 }
 

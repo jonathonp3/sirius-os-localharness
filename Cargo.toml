@@ -9,6 +9,7 @@ name = "harness"
 path = "src/main.rs"
 
 [dependencies]
+async-trait = "0.1"
 axum = "0.8"
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }

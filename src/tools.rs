@@ -10,8 +10,6 @@ use serde_json::{json, Value};
 use crate::mcp::McpServer;
 use crate::plugins::Plugin;
 
-const MAX_OUTPUT: usize = 20_000;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolPolicy {
     ReadOnly,
@@ -80,6 +78,7 @@ pub struct ToolSet {
     plugins: Arc<Vec<Plugin>>,
     mcp: Arc<Vec<Arc<McpServer>>>,
     scopes: ToolScopes,
+    dry_run: bool,
 }
 
 impl ToolSet {
@@ -89,8 +88,9 @@ impl ToolSet {
         plugins: Arc<Vec<Plugin>>,
         mcp: Arc<Vec<Arc<McpServer>>>,
         scopes: ToolScopes,
+        dry_run: bool,
     ) -> Self {
-        Self { root, policy, plugins, mcp, scopes }
+        Self { root, policy, plugins, mcp, scopes, dry_run }
     }
 
     pub fn names(&self) -> Vec<String> {
@@ -162,7 +162,7 @@ impl ToolSet {
                 "type": "function",
                 "function": {
                     "name": "bash",
-                    "description": "Run a non-interactive bash command inside the workspace (60 s timeout).",
+                    "description": "Run a non-interactive bash command inside the workspace (configurable timeout, 300 s default).",
                     "parameters": {
                         "type": "object",
                         "properties": { "command": { "type": "string", "description": "Command to run with bash -lc" } },
@@ -214,6 +214,30 @@ impl ToolSet {
 
         if !self.scopes.permits(name) {
             bail!("tool `{name}` is not permitted by the session scopes");
+        }
+
+        if self.dry_run {
+            if name == "write_file" {
+                if !self.policy.allows_write() {
+                    bail!("write_file is disabled by the tool policy (use --allow-write or --tool-policy write)");
+                }
+                let path = string_arg(&arguments, "path")?;
+                let content = string_arg(&arguments, "content")?;
+                return Ok(format!("DRY-RUN — NOT EXECUTED. Would write {} bytes to {path}. Nothing was changed.", content.len()));
+            }
+            if name == "bash" {
+                if !self.policy.allows_shell() {
+                    bail!("bash is disabled by the tool policy (use --allow-shell or --tool-policy full)");
+                }
+                let command = string_arg(&arguments, "command")?;
+                return Ok(format!("DRY-RUN — NOT EXECUTED. Would run: {command}. Nothing was run."));
+            }
+            if name.starts_with("plugin__") || name.starts_with("mcp__") {
+                if !self.policy.allows_shell() {
+                    bail!("plugin and MCP tools require --tool-policy full (or --allow-shell)");
+                }
+                return Ok(format!("DRY-RUN — NOT EXECUTED. Would call {name} with {arguments}. Nothing was run."));
+            }
         }
 
         if name.starts_with("mcp__") {
@@ -289,8 +313,9 @@ impl ToolSet {
                     bail!("bash is disabled by the tool policy (use --allow-shell or --tool-policy full)");
                 }
                 let command = string_arg(&arguments, "command")?;
+                let timeout = bash_timeout();
                 let output = tokio::time::timeout(
-                    Duration::from_secs(60),
+                    timeout,
                     tokio::process::Command::new("bash")
                         .arg("-lc")
                         .arg(&command)
@@ -299,7 +324,7 @@ impl ToolSet {
                         .output(),
                 )
                 .await
-                .context("bash timed out after 60 s")??;
+                .with_context(|| format!("bash timed out after {} s", timeout.as_secs()))??;
                 Ok(render_output(&output))
             }
             other => bail!("unknown tool `{other}`"),
@@ -426,11 +451,105 @@ fn string_arg(arguments: &Value, name: &str) -> Result<String> {
         .with_context(|| format!("missing string argument `{name}`"))
 }
 
+fn max_output() -> usize {
+    std::env::var("HARNESS_MAX_OUTPUT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(100_000)
+}
+
+fn bash_timeout() -> Duration {
+    std::env::var("HARNESS_BASH_TIMEOUT")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(300))
+}
+
 fn truncate(text: &str) -> String {
-    if text.chars().count() <= MAX_OUTPUT {
+    let limit = max_output();
+    if text.chars().count() <= limit {
         return text.to_string();
     }
-    let mut out: String = text.chars().take(MAX_OUTPUT).collect();
+    let mut out: String = text.chars().take(limit).collect();
     out.push_str("\n...[truncated]");
     out
+}
+
+/// Conservative destructive-command detection for the bash tool.
+pub fn destructive_reason(name: &str, arguments: &str) -> Option<String> {
+    if name != "bash" {
+        return None;
+    }
+    let value: Value = serde_json::from_str(arguments).ok()?;
+    let command = value.get("command")?.as_str()?.to_string();
+    let lower = command.to_ascii_lowercase();
+
+    for segment in lower.split([';', '&', '|', '\n']) {
+        let words: Vec<&str> = segment.split_whitespace().collect();
+        let Some(first) = words.first().copied() else { continue };
+        let reason = match first {
+            "rm" | "rmdir" | "shred" | "dd" | "wipefs" | "fdisk" | "parted" | "truncate"
+            | "sudo" | "doas" | "pkexec" | "shutdown" | "reboot" | "poweroff"
+            | "systemctl" | "service" | "dnf" | "apt" | "apt-get" | "rpm-ostree"
+            | "snap" | "kill" | "pkill" | "killall" => Some(first.to_string()),
+            "mkfs" => Some("mkfs".to_string()),
+            _ if first.starts_with("mkfs.") => Some("mkfs".to_string()),
+            "git" => match words.get(1).copied() {
+                Some("clean") if words.iter().any(|word| word.starts_with('-') && word.contains('f')) => {
+                    Some("git clean -f".to_string())
+                }
+                Some("reset") if words.contains(&"--hard") => Some("git reset --hard".to_string()),
+                Some("push") if words.iter().any(|word| *word == "-f" || word.starts_with("--force")) => {
+                    Some("git push --force".to_string())
+                }
+                Some("checkout") if words.contains(&"--") => Some("git checkout --".to_string()),
+                Some("restore") => Some("git restore".to_string()),
+                _ => None,
+            },
+            "flatpak" => match words.get(1).copied() {
+                Some("uninstall") | Some("remove") => Some("flatpak uninstall".to_string()),
+                _ => None,
+            },
+            "find" if words.contains(&"-delete") => Some("find -delete".to_string()),
+            "xargs" if words.contains(&"rm") => Some("xargs rm".to_string()),
+            "chmod" if words.iter().any(|word| *word == "-R" || *word == "--recursive") => {
+                Some("recursive chmod".to_string())
+            }
+            "chown" if words.iter().any(|word| *word == "-R" || *word == "--recursive") => {
+                Some("recursive chown".to_string())
+            }
+            _ => None,
+        };
+        if let Some(reason) = reason {
+            return Some(format!("destructive pattern: {reason}"));
+        }
+    }
+
+    if lower.contains("| sh") || lower.contains("| bash") {
+        return Some("piping content into a shell".to_string());
+    }
+    if lower.contains("> /dev/sd") || lower.contains("> /etc/") {
+        return Some("writing to a sensitive path".to_string());
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::destructive_reason;
+
+    #[test]
+    fn flags_destructive_commands() {
+        for command in ["rm -rf /tmp/x", "sudo dnf install x", "git push --force", "find . -delete"] {
+            assert!(destructive_reason("bash", &format!("{{\"command\":\"{command}\"}}")).is_some(), "{command}");
+        }
+    }
+
+    #[test]
+    fn allows_read_only_commands() {
+        for command in ["ls -l .local", "git status", "cat README.md", "rg TODO src"] {
+            assert!(destructive_reason("bash", &format!("{{\"command\":\"{command}\"}}")).is_none(), "{command}");
+        }
+    }
 }

@@ -327,9 +327,32 @@ optional; see `packaging/flatpak/FLATHUB.md`.
 
 - `read_file` / `list_dir` resolve and canonicalize paths and reject anything
   outside the workspace.
-- `write_file` / `bash` are disabled unless the run explicitly opts in.
-- `bash` runs non-interactively with a 60 s timeout and a 20k-character output
-  cap.
+- `write_file` / `bash` are disabled unless the policy enables them.
+- `bash` runs non-interactively with a configurable timeout (300 s default)
+  and output cap (100 000 characters default).
+
+### Guardrails
+
+- **Dry run** — `--dry-run` reports every mutating tool call
+  (`bash`, `write_file`, plugins, MCP) without executing it; read tools still
+  work. Tool results are prefixed `DRY-RUN — NOT EXECUTED`, and the agent
+  finishes with a “no changes were made” notice.
+- **Destructive command approval** — commands matching high-risk patterns
+  (`rm`, `dd`, `mkfs`, `sudo`, `git reset --hard`, `git push --force`,
+  `flatpak uninstall`, `systemctl`, package managers, etc.) pause for approval:
+  - CLI: a `[y/N]` prompt on stdin (EOF means deny).
+  - Web: an approval card with **Run** / **Deny** buttons; no response within
+    120 s denies.
+  - `--yes` auto-approves (for scripts); use it deliberately.
+- **Subagents off for terminal mode** — `--max-depth 0` removes the `subagent`
+  tool. The user service runs with it, so the model goes straight to `bash`.
+- **Tunables** — `HARNESS_BASH_TIMEOUT` seconds (default `300`) and
+  `HARNESS_MAX_OUTPUT` characters (default `100000`).
+- Tool cards expose a **copy command** button for `bash` (and copy-args for
+  other tools); fenced code blocks have a copy button.
+
+The destructive classifier is conservative — it can miss wrapped commands and
+can over-match; use dry-run when in doubt.
 
 ## Next phases
 

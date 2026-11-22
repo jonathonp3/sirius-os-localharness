@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{bail, Result};
 use serde_json::{Value, json};
 
+use crate::approval::{ApprovalRequest, Approver};
 use crate::governor::Governor;
 use crate::mcp::McpServer;
 use crate::plugins::Plugin;
@@ -39,6 +40,8 @@ pub struct Config {
     pub plugins: Arc<Vec<Plugin>>,
     pub mcp: Arc<Vec<Arc<McpServer>>>,
     pub scopes: ToolScopes,
+    pub approver: Arc<dyn Approver>,
+    pub dry_run: bool,
     pub think: bool,
     pub governor: Governor,
     pub cancel: Option<Arc<AtomicBool>>,
@@ -60,7 +63,7 @@ pub async fn run(
     sink: &mut dyn EventSink,
 ) -> Result<Outcome> {
     let client = Client::new(&config.endpoint, &config.model)?;
-    let tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone());
+    let tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run);
     let can_delegate = config.depth < config.max_depth;
     let mut definitions = tools.definitions();
     let mut names = tools.names();
@@ -68,7 +71,12 @@ pub async fn run(
         definitions.push(subagent_definition());
         names.push("subagent".to_string());
     }
-    let system = system_prompt(&config.workspace, &names, config.depth);
+    let mut system = system_prompt(&config.workspace, &names, config.depth);
+    if config.dry_run {
+        system.push_str(
+            "\nDry-run mode is active: tool results beginning with `dry-run:` are previews. Nothing was executed; never claim those actions happened.\n",
+        );
+    }
 
     // A fresh session starts with system+user. Resume/fork histories keep their
     // messages, get the current system prompt, and append the new user turn.
@@ -91,6 +99,9 @@ pub async fn run(
     }
 
     sink.session(&session.id);
+    if config.dry_run {
+        sink.notice("dry-run: mutating tool calls will be reported, not executed");
+    }
     session
         .append(serde_json::json!({
             "type": "policy",
@@ -113,6 +124,7 @@ pub async fn run(
 
     let mut final_usage: Option<Usage> = None;
     let mut children = 0usize;
+    let mut dry_run_reminded = false;
 
     for step in 1..=config.max_steps {
         if config
@@ -180,11 +192,25 @@ pub async fn run(
                 sink.tool_call(&call.function.name, &call.function.arguments);
                 let result = if call.function.name == "subagent" {
                     handle_subagent(&config, &call.function.arguments, session, sink, &mut children).await
-                } else {
-                    match tools.execute(&call.function.name, &call.function.arguments).await {
-                        Ok(output) => output,
-                        Err(error) => format!("tool error: {error:#}"),
+                } else if config.dry_run {
+                    execute_tool(&tools, &call.function.name, &call.function.arguments).await
+                } else if let Some(reason) =
+                    crate::tools::destructive_reason(&call.function.name, &call.function.arguments)
+                {
+                    let request = ApprovalRequest {
+                        name: call.function.name.clone(),
+                        arguments: call.function.arguments.clone(),
+                        reason,
+                    };
+                    if config.approver.approve(&request).await {
+                        sink.notice("destructive command approved");
+                        execute_tool(&tools, &call.function.name, &call.function.arguments).await
+                    } else {
+                        sink.notice("destructive command denied; nothing was executed");
+                        "approval denied by user; the command was not executed".to_string()
                     }
+                } else {
+                    execute_tool(&tools, &call.function.name, &call.function.arguments).await
                 };
                 sink.tool_result(&result);
                 let message = Message::tool(call.id.clone(), result);
@@ -192,6 +218,13 @@ pub async fn run(
                 session
                     .append(serde_json::json!({ "type": "message", "message": message }))
                     .await?;
+            }
+
+            if config.dry_run && !dry_run_reminded {
+                messages.push(Message::user(
+                    "[Dry-run reminder] Every tool result above is a preview. Nothing was executed. Do not claim any action happened; describe what would happen.",
+                ));
+                dry_run_reminded = true;
             }
         }
     }
@@ -356,6 +389,13 @@ fn subagent_definition() -> Value {
             }
         }
     })
+}
+
+async fn execute_tool(tools: &ToolSet, name: &str, arguments: &str) -> String {
+    match tools.execute(name, arguments).await {
+        Ok(output) => output,
+        Err(error) => format!("tool error: {error:#}"),
+    }
 }
 
 fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) -> String {

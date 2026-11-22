@@ -1,6 +1,7 @@
 //! `harness` — a local-first agent harness for a llama.cpp OpenAI-compatible server.
 
 mod agent;
+mod approval;
 mod governor;
 mod llm;
 mod mcp;
@@ -45,6 +46,12 @@ struct Cli {
     /// Sampling temperature; overrides the profile (default 0.0).
     #[arg(long, global = true, env = "HARNESS_TEMPERATURE")]
     temperature: Option<f32>,
+    /// Report mutating tool calls without executing them.
+    #[arg(long, global = true, env = "HARNESS_DRY_RUN")]
+    dry_run: bool,
+    /// Auto-approve destructive commands (no prompt).
+    #[arg(long, global = true, env = "HARNESS_YES")]
+    yes: bool,
     /// Tool policy: read-only, write, or full.
     #[arg(long, global = true, env = "HARNESS_TOOL_POLICY")]
     tool_policy: Option<String>,
@@ -311,6 +318,8 @@ async fn main() -> Result<()> {
                 plugins: plugin_tools.clone(),
                 mcp: mcp_servers.clone(),
                 scopes: scopes.clone(),
+                approver: if cli.yes { approval::auto() } else { approval::stdio() },
+                dry_run: cli.dry_run,
                 think,
                 governor,
                 cancel: None,
@@ -350,6 +359,8 @@ async fn main() -> Result<()> {
                 plugins: plugin_tools.clone(),
                 mcp: mcp_servers.clone(),
                 scopes: scopes.clone(),
+                approver: if cli.yes { approval::auto() } else { approval::deny() },
+                dry_run: cli.dry_run,
                 think,
                 governor,
                 cancel: None,
@@ -358,7 +369,7 @@ async fn main() -> Result<()> {
                 max_depth,
                 max_children,
             };
-            server::run(config, data_dir, port, token, open, concurrency).await
+            server::run(config, data_dir, port, token, open, concurrency, cli.yes).await
         }
         Command::Workflow { file, max_steps, max_tokens, allow_write, allow_shell, think, max_depth } => {
             let max_tokens = max_tokens
@@ -386,6 +397,8 @@ async fn main() -> Result<()> {
                 plugins: plugin_tools.clone(),
                 mcp: mcp_servers.clone(),
                 scopes: scopes.clone(),
+                approver: if cli.yes { approval::auto() } else { approval::stdio() },
+                dry_run: cli.dry_run,
                 think,
                 governor,
                 cancel: None,

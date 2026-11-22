@@ -38,6 +38,16 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-block { padding:6px 10px; }
 .tool-label { text-transform:uppercase; font-size:10px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; }
 .tool-card pre { margin:0; background:#0d0d0d; border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
+.tool-copy { float:right; background:#2a2a2a; color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:1px 6px; cursor:pointer; }
+.approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
+.approval-title { color:#f6c177; font-weight:600; margin-bottom:4px; }
+.approval-reason { color:var(--muted); font-size:12px; margin-bottom:6px; }
+.approval-card pre { margin:0 0 8px; background:#0d0d0d; border:1px solid var(--border); border-radius:6px; padding:8px; white-space:pre-wrap; max-height:240px; overflow:auto; }
+.approval-actions { display:flex; gap:8px; }
+.approval-actions button { padding:5px 12px; border:0; border-radius:6px; cursor:pointer; font-weight:600; }
+.approval-actions button[data-decision="approve"] { background:#68d391; color:#08110c; }
+.approval-actions button[data-decision="deny"] { background:#3a3a3a; color:var(--text); }
+.approval-actions button:disabled { opacity:.5; cursor:default; }
 form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; background:var(--panel); }
 textarea { flex:1; resize:none; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; font:inherit; min-height:44px; max-height:180px; }
 button { background:var(--accent); color:#08111f; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
@@ -163,6 +173,25 @@ function addToolCard(name, argumentsText) {
     + '<div class="tool-block"><div class="tool-label">arguments</div><pre><code class="tool-args"></code></pre></div>'
     + '<div class="tool-block tool-result" hidden><div class="tool-label">result</div><pre><code class="tool-result-text"></code></pre></div>';
   card.querySelector('.tool-args').textContent = prettyJson(argumentsText);
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'tool-copy';
+  copy.textContent = name === 'bash' ? 'copy command' : 'copy args';
+  copy.addEventListener('click', async () => {
+    let value = argumentsText;
+    try {
+      const parsed = JSON.parse(argumentsText);
+      value = parsed.command || JSON.stringify(parsed, null, 2);
+    } catch (error) {}
+    try {
+      await navigator.clipboard.writeText(value);
+      copy.textContent = 'copied';
+      setTimeout(() => { copy.textContent = name === 'bash' ? 'copy command' : 'copy args'; }, 1200);
+    } catch (error) {
+      copy.textContent = 'failed';
+    }
+  });
+  card.querySelector('.tool-block .tool-label').appendChild(copy);
   log.appendChild(card);
   log.scrollTop = log.scrollHeight;
   return card;
@@ -179,6 +208,39 @@ function finishToolCard(card, chars, preview) {
   status.classList.add(isError ? 'error' : 'ok');
   card.classList.toggle('tool-error', isError);
   if (isError) card.open = true;
+  log.scrollTop = log.scrollHeight;
+}
+
+function addApprovalCard(payload) {
+  const card = document.createElement('div');
+  card.className = 'approval-card';
+  let display = payload.arguments;
+  try {
+    const parsed = JSON.parse(payload.arguments);
+    display = parsed.command || JSON.stringify(parsed, null, 2);
+  } catch (error) {}
+  card.innerHTML = '<div class="approval-title">⚠ Approval required</div>'
+    + '<div class="approval-reason"></div>'
+    + '<pre><code></code></pre>'
+    + '<div class="approval-actions"><button type="button" data-decision="approve">Run</button><button type="button" data-decision="deny">Deny</button></div>';
+  card.querySelector('.approval-reason').textContent = payload.reason;
+  card.querySelector('code').textContent = display;
+  card.querySelectorAll('button').forEach((button) => {
+    button.addEventListener('click', async () => {
+      card.querySelectorAll('button').forEach((other) => { other.disabled = true; });
+      button.textContent = button.dataset.decision === 'approve' ? 'Approved' : 'Denied';
+      try {
+        await fetch('/api/approval?token=' + encodeURIComponent(token), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: payload.id, decision: button.dataset.decision === 'approve' }),
+        });
+      } catch (error) {
+        add('error', String(error));
+      }
+    });
+  });
+  log.appendChild(card);
   log.scrollTop = log.scrollHeight;
 }
 
@@ -211,6 +273,9 @@ function handleBlock(block) {
     openTool = null;
   } else if (event === 'notice') {
     add('meta', payload.message);
+  } else if (event === 'approval') {
+    addApprovalCard(payload);
+    assistantEl = null;
   } else if (event === 'done') {
     finished = true;
     const cached = payload.cached_tokens ? ' · ' + payload.cached_tokens + ' cached' : '';
