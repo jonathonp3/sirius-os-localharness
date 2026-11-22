@@ -329,6 +329,12 @@ Answers are guided toward compact bullet lists; for large directory listings
 or command output the agent summarizes and lists at most ten relevant entries
 instead of reproducing the full transcript.
 
+## Prompt sizing
+
+The prompt box grows automatically as lines are added, up to roughly 65% of the
+window height (max 700px). Past that it scrolls. This replaces the old fixed
+single-line-height prompt; no manual drag handle is needed.
+
 ## Spellcheck
 
 The prompt uses an in-app **en_AU Hunspell dictionary** via Typo.js, so it works

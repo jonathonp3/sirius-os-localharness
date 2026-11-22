@@ -60,10 +60,10 @@ textarea::placeholder { color:var(--muted); opacity:1; }
 #spell { background:#3a3a3a; color:var(--text); padding:0 12px; }
 #spell.active { background:var(--accent); color:#08111f; }
 header select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px; }
-form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; background:var(--panel); }
+form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; align-items:flex-end; background:var(--panel); }
 #editor { position:relative; flex:1; display:flex; font-size:16px; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
 #editor:focus-within { border-color:var(--accent); }
-#editor textarea { position:relative; z-index:1; flex:1; resize:none; background:transparent; color:var(--text); border:0; padding:10px; font:inherit; line-height:1.5; min-height:44px; max-height:180px; white-space:pre-wrap; overflow-wrap:break-word; scrollbar-width:none; }
+#editor textarea { position:relative; z-index:1; flex:1; resize:none; background:transparent; color:var(--text); border:0; padding:10px; font:inherit; line-height:1.5; min-height:44px; max-height:70vh; box-sizing:border-box; white-space:pre-wrap; overflow-y:hidden; overflow-wrap:break-word; scrollbar-width:none; }
 #editor textarea::-webkit-scrollbar { display:none; }
 #spell-layer { position:absolute; inset:0; z-index:0; padding:10px; font:inherit; line-height:1.5; white-space:pre-wrap; overflow-wrap:break-word; color:transparent; pointer-events:none; overflow:hidden; }
 #spell-layer mark { background:transparent; color:transparent; border-bottom:2px solid #e5534b; }
@@ -515,9 +515,19 @@ function spellingAt(x, y, allowFallback) {
   return allowFallback ? firstMisspelling() : null;
 }
 
+function autoGrowPrompt() {
+  promptEl.style.height = 'auto';
+  const maxHeight = Math.max(120, Math.min(Math.floor(window.innerHeight * 0.65), 700));
+  const nextHeight = Math.max(44, Math.min(promptEl.scrollHeight, maxHeight));
+  promptEl.style.height = nextHeight + 'px';
+  promptEl.style.overflowY = promptEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  if (spellLayer) spellLayer.scrollTop = promptEl.scrollTop;
+}
+
+promptEl.addEventListener('input', autoGrowPrompt);
 promptEl.addEventListener('input', scheduleSpell);
 promptEl.addEventListener('scroll', () => { spellLayer.scrollTop = promptEl.scrollTop; });
-window.addEventListener('resize', scheduleSpell);
+window.addEventListener('resize', () => { autoGrowPrompt(); scheduleSpell(); });
 promptEl.addEventListener('contextmenu', (event) => {
   try {
     showContextMenu(event.clientX, event.clientY, spellingAt(event.clientX, event.clientY, true));
@@ -563,6 +573,7 @@ function setSpellcheck(enabled) {
 
 spellEl.addEventListener('click', () => setSpellcheck(!spellcheckEnabled));
 setSpellcheck(spellcheckEnabled);
+autoGrowPrompt();
 loadSpellDictionary();
 
 
@@ -748,6 +759,7 @@ async function send() {
   if (!text || !token || sendEl.disabled) return;
   add('user', text);
   promptEl.value = '';
+  autoGrowPrompt();
   sendEl.disabled = true;
   stopEl.disabled = false;
   controller = new AbortController();
