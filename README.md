@@ -336,8 +336,14 @@ in both the browser and the native WebKit window without relying on the
 browser's dictionary:
 
 - red underlines for misspelled words;
-- right-click a misspelled word for suggestions;
+- right-click opens a custom menu: spelling suggestions first, then
+  Cut / Copy / Paste / Delete / Select all;
+- the native WebKit context menu is suppressed in the native window so the
+  custom menu is visible;
 - the **Spell** toggle enables/disables it and is remembered in `localStorage`.
+
+The custom menu does not include the old WebKit “insert emoji/unicode” items;
+keyboard clipboard shortcuts still work.
 
 The dictionary and Typo.js are bundled under `src/assets/` and served locally;
 no network lookup is used.

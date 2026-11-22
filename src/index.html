@@ -11,7 +11,7 @@
 body { margin:0; font:15px/1.5 ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
 header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; }
 header h1 { font-size:14px; font-weight:600; margin:0; }
-#status { color:var(--muted); font-size:13px; margin-left:auto; }
+#status { color:var(--muted); font-size:14px; margin-left:auto; }
 #status.error { color:#ff6b6b; }
 #log { flex:1; overflow:auto; padding:18px; display:flex; flex-direction:column; gap:10px; }
 .bubble { max-width:min(760px, 92%); padding:10px 12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
@@ -32,8 +32,9 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-card { align-self:flex-start; width:min(760px,92%); background:var(--panel); border:1px solid var(--border); border-radius:8px; font:13px ui-monospace, monospace; color:var(--muted); }
 .tool-card summary { cursor:pointer; padding:6px 10px; color:var(--text); }
 .tool-card[open] summary { border-bottom:1px solid var(--border); }
+.tool-card summary { font-size:14px; }
 .tool-card summary code { color:var(--accent); }
-.tool-status { font-size:11px; color:var(--muted); margin-left:6px; }
+.tool-status { font-size:12px; color:var(--muted); margin-left:6px; }
 .tool-status.ok { color:var(--ok); font-weight:600; }
 .tool-status.error { color:#fc8181; }
 .tool-block { padding:6px 10px; }
@@ -67,6 +68,8 @@ form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px;
 #spell-menu { position:fixed; z-index:100; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:4px; min-width:160px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
 #spell-menu button { display:block; width:100%; text-align:left; background:none; color:var(--text); border:0; border-radius:4px; padding:5px 8px; cursor:pointer; }
 #spell-menu button:hover { background:var(--bg); }
+#spell-menu button:disabled { opacity:.45; cursor:default; }
+.spell-menu-sep { height:1px; background:var(--border); margin:4px 2px; }
 .spell-menu-title { font-size:11px; color:var(--muted); padding:3px 8px; }
 .spell-menu-empty { font-size:12px; color:var(--muted); padding:4px 8px; }
 button { background:var(--accent); color:#08111f; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
@@ -280,33 +283,104 @@ function hideSpellMenu() {
   spellMenu.style.display = 'none';
 }
 
-function showSpellMenu(word, start, end, x, y) {
-  spellMenu.innerHTML = '';
-  const title = document.createElement('div');
-  title.className = 'spell-menu-title';
-  title.textContent = word;
-  spellMenu.appendChild(title);
-  const suggestions = spellDictionary.suggest(word, 6);
-  if (!suggestions.length) {
-    const empty = document.createElement('div');
-    empty.className = 'spell-menu-empty';
-    empty.textContent = 'No suggestions';
-    spellMenu.appendChild(empty);
-  }
-  suggestions.forEach((suggestion) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = suggestion;
-    button.addEventListener('click', () => {
-      promptEl.setRangeText(suggestion, start, end, 'end');
-      promptEl.dispatchEvent(new Event('input'));
-      hideSpellMenu();
-      promptEl.focus();
-    });
-    spellMenu.appendChild(button);
+function menuButton(label, action, disabled) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.disabled = Boolean(disabled);
+  button.addEventListener('click', () => {
+    hideSpellMenu();
+    Promise.resolve(action()).catch(() => {});
   });
-  spellMenu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
-  spellMenu.style.top = Math.min(y, window.innerHeight - 220) + 'px';
+  spellMenu.appendChild(button);
+}
+
+function menuSeparator() {
+  const separator = document.createElement('div');
+  separator.className = 'spell-menu-sep';
+  spellMenu.appendChild(separator);
+}
+
+async function writeClipboard(text) {
+  if (navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (error) {}
+  }
+  try {
+    const scratch = document.createElement('textarea');
+    scratch.value = text;
+    document.body.appendChild(scratch);
+    scratch.select();
+    const ok = document.execCommand('copy');
+    scratch.remove();
+    return ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+function showContextMenu(x, y, spelling) {
+  spellMenu.innerHTML = '';
+  if (spelling) {
+    const title = document.createElement('div');
+    title.className = 'spell-menu-title';
+    title.textContent = spelling.word;
+    spellMenu.appendChild(title);
+    const suggestions = spellDictionary.suggest(spelling.word, 6);
+    if (!suggestions.length) {
+      const empty = document.createElement('div');
+      empty.className = 'spell-menu-empty';
+      empty.textContent = 'No suggestions';
+      spellMenu.appendChild(empty);
+    }
+    suggestions.forEach((suggestion) => {
+      menuButton(suggestion, () => {
+        promptEl.setRangeText(suggestion, spelling.start, spelling.end, 'end');
+        promptEl.dispatchEvent(new Event('input'));
+        promptEl.focus();
+      });
+    });
+    menuSeparator();
+  }
+
+  const start = promptEl.selectionStart;
+  const end = promptEl.selectionEnd;
+  const selected = promptEl.value.slice(start, end);
+  const hasSelection = end > start;
+  const canClipboard = Boolean(navigator.clipboard);
+
+  menuButton('Cut', async () => {
+    if (await writeClipboard(selected)) {
+      promptEl.setRangeText('', start, end, 'end');
+      promptEl.dispatchEvent(new Event('input'));
+      promptEl.focus();
+    }
+  }, !hasSelection);
+  menuButton('Copy', () => writeClipboard(selected), !hasSelection);
+  menuButton('Paste', async () => {
+    if (!navigator.clipboard) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      promptEl.setRangeText(text, start, end, 'end');
+      promptEl.dispatchEvent(new Event('input'));
+      promptEl.focus();
+    } catch (error) {}
+  }, !canClipboard);
+  menuButton('Delete', () => {
+    promptEl.setRangeText('', start, end, 'end');
+    promptEl.dispatchEvent(new Event('input'));
+    promptEl.focus();
+  }, !hasSelection);
+  menuSeparator();
+  menuButton('Select all', () => {
+    promptEl.select();
+    promptEl.focus();
+  });
+
+  spellMenu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
+  spellMenu.style.top = Math.min(y, window.innerHeight - 320) + 'px';
   spellMenu.hidden = false;
   spellMenu.style.display = 'block';
   spellMenuOpenedAt = Date.now();
@@ -324,11 +398,8 @@ function firstMisspelling() {
   return null;
 }
 
-promptEl.addEventListener('input', scheduleSpell);
-promptEl.addEventListener('scroll', () => { spellLayer.scrollTop = promptEl.scrollTop; });
-window.addEventListener('resize', scheduleSpell);
-function showSpellAt(x, y, allowFallback) {
-  if (!spellcheckEnabled || !spellDictionary) return false;
+function spellingAt(x, y, allowFallback) {
+  if (!spellcheckEnabled || !spellDictionary) return null;
   renderSpellLayer();
   const marks = Array.from(spellLayer.querySelectorAll('mark'));
   let mark = marks.find((candidate) => {
@@ -344,27 +415,23 @@ function showSpellAt(x, y, allowFallback) {
     }).sort((a, b) => a.distance - b.distance)[0].candidate;
   }
   if (mark) {
-    showSpellMenu(mark.textContent, Number(mark.dataset.start), Number(mark.dataset.end), x, y);
-    return true;
+    return { word: mark.textContent, start: Number(mark.dataset.start), end: Number(mark.dataset.end) };
   }
-  if (allowFallback) {
-    const fallback = firstMisspelling();
-    if (fallback) {
-      showSpellMenu(fallback.word, fallback.start, fallback.end, x, y);
-      return true;
-    }
-  }
-  return false;
+  return allowFallback ? firstMisspelling() : null;
 }
 
+promptEl.addEventListener('input', scheduleSpell);
+promptEl.addEventListener('scroll', () => { spellLayer.scrollTop = promptEl.scrollTop; });
+window.addEventListener('resize', scheduleSpell);
 promptEl.addEventListener('contextmenu', (event) => {
-  if (showSpellAt(event.clientX, event.clientY, true)) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
+  event.preventDefault();
+  event.stopPropagation();
+  showContextMenu(event.clientX, event.clientY, spellingAt(event.clientX, event.clientY, true));
 });
 promptEl.addEventListener('click', (event) => {
-  if (event.button === 0) showSpellAt(event.clientX, event.clientY, false);
+  if (event.button !== 0) return;
+  const spelling = spellingAt(event.clientX, event.clientY, false);
+  if (spelling) showContextMenu(event.clientX, event.clientY, spelling);
 });
 document.addEventListener('click', (event) => {
   if (event.button !== 0) return;
