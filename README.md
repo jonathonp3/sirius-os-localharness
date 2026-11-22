@@ -295,25 +295,22 @@ native window instead of the browser. The window does not stop a
 systemd-managed service; use `systemctl --user stop local-harness-flatpak`.
 
 
-## Terminal mode and themes
+## Themes
 
-The prompt has a **Shell** toggle. When active, input runs directly through
-`/api/shell` without the model and renders as a terminal (prompt, output,
-status, copy command). A leading `!` or `$` does the same for one command
-without toggling.
+The header theme selector switches background/palette presets and remembers the
+choice in `localStorage`:
 
-```text
-!ls -l .local
-$ git status
-```
+- Dark
+- Midnight
+- Solarized
+- Light
+- Sepia
+- **Golden Sand** — derived from `themes/solarized-light-golden-sand.xml`
+  (GtkSourceView scheme): golden-sand background, base01 text, Solarized accent
+  colors, and matching highlight.js token colors.
 
-Direct shell commands respect the same policy, dry-run mode, and destructive
-classification as agent tool calls. A destructive command first shows the
-approval card; approving resends it with explicit confirmation. Chat-mode
-`bash` tool calls also render as terminal cards.
-
-The header theme selector switches background/palette presets (Dark, Midnight,
-Solarized, Light, Sepia) and remembers the choice in `localStorage`.
+The selected theme also themes code blocks and tool cards, not just the page
+background. `themes/README.md` documents the XML-to-UI mapping.
 
 ## Safety
 
@@ -326,7 +323,7 @@ Solarized, Light, Sepia) and remembers the choice in `localStorage`.
 ### Guardrails
 
 - **Dry run** — `--dry-run` reports every mutating tool call
-  (`bash`, `write_file`, plugins, MCP, direct shell) without executing it;
+  (`bash`, `write_file`, plugins, MCP) without executing it;
   read tools still work. Tool results are prefixed `DRY-RUN — NOT EXECUTED`, and the agent
   finishes with a “no changes were made” notice.
 - **Destructive command approval** — commands matching high-risk patterns
@@ -336,7 +333,7 @@ Solarized, Light, Sepia) and remembers the choice in `localStorage`.
   - Web: an approval card with **Run** / **Deny** buttons; no response within
     120 s denies.
   - `--yes` auto-approves (for scripts); use it deliberately.
-- **Subagents off for terminal mode** — `--max-depth 0` removes the `subagent`
+- **Subagents off for the service** — `--max-depth 0` removes the `subagent`
   tool. The user service runs with it, so the model goes straight to `bash`.
 - **Tunables** — `HARNESS_BASH_TIMEOUT` seconds (default `300`) and
   `HARNESS_MAX_OUTPUT` characters (default `100000`).

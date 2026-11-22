@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Local Harness</title>
 <style>
-:root { color-scheme: dark; --bg:#111; --panel:#1a1a1a; --text:#e8e8e8; --muted:#9a9a9a; --accent:#6ea8fe; --border:#2a2a2a; }
+:root { color-scheme: dark; --bg:#111; --panel:#1a1a1a; --text:#e8e8e8; --muted:#9a9a9a; --accent:#6ea8fe; --border:#2a2a2a;
+--code-bg:#0d0d0d; --code-text:#e6e6e6; --code-comment:#8b949e; --code-keyword:#ff7b72; --code-string:#a5d6ff; --code-number:#79c0ff; --code-title:#d2a8ff; --code-type:#ffa657; --code-builtin:#79c0ff; --code-meta:#d2a8ff; --code-attr:#79c0ff; --code-tag:#7ee787; --code-regexp:#ffa657; --code-variable:#ffa657; --code-addition:#aff5b4; --code-deletion:#ffdcd7; }
 * { box-sizing: border-box; }
 body { margin:0; font:14px/1.5 ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
 header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; }
@@ -37,40 +38,42 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-status.error { color:#fc8181; }
 .tool-block { padding:6px 10px; }
 .tool-label { text-transform:uppercase; font-size:10px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; }
-.tool-card pre { margin:0; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
-.tool-copy { float:right; background:#2a2a2a; color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:1px 6px; cursor:pointer; }
+.tool-card pre { margin:0; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
+.tool-copy { float:right; background:var(--panel); color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:1px 6px; cursor:pointer; }
 .approval-card.resolved { opacity:.85; }
 .approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
 .approval-title { color:#f6c177; font-weight:600; margin-bottom:4px; }
 .approval-reason { color:var(--muted); font-size:12px; margin-bottom:6px; }
-.approval-card pre { margin:0 0 8px; background:#0d0d0d; border:1px solid var(--border); border-radius:6px; padding:8px; white-space:pre-wrap; max-height:240px; overflow:auto; }
+.approval-card pre { margin:0 0 8px; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; white-space:pre-wrap; max-height:240px; overflow:auto; }
 .approval-actions { display:flex; gap:8px; }
 .approval-actions button { padding:5px 12px; border:0; border-radius:6px; cursor:pointer; font-weight:600; }
 .approval-actions button[data-decision="approve"] { background:#68d391; color:#08110c; }
 .approval-actions button[data-decision="deny"] { background:#3a3a3a; color:var(--text); }
 .approval-actions button:disabled { opacity:.5; cursor:default; }
 header select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px; }
-#mode { background:#3a3a3a; color:var(--text); }
-#mode.active { background:var(--accent); color:#08111f; }
-.terminal { align-self:flex-start; width:min(860px,96%); background:#0b0b0b; border:1px solid #2a2a2a; border-radius:10px; overflow:hidden; font:13px ui-monospace, monospace; }
-.terminal-head { display:flex; align-items:center; gap:6px; padding:6px 10px; background:#1b1b1b; border-bottom:1px solid #2a2a2a; color:#9a9a9a; font-size:11px; }
-.terminal-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
-.terminal-title { margin-left:6px; }
-.terminal-copy { margin-left:auto; float:none; }
-.terminal-body { padding:10px 12px; white-space:pre-wrap; max-height:420px; overflow:auto; }
-.terminal-prompt { color:#6ea8fe; }
-.terminal-output { margin:6px 0 0; white-space:pre-wrap; color:#e6e6e6; font:inherit; }
-.terminal-exit { margin-top:6px; color:#9a9a9a; font-size:11px; }
-.terminal-exit.ok { color:#68d391; }
-.terminal-exit.error { color:#fc8181; }
 form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; background:var(--panel); }
 textarea { flex:1; resize:none; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; font:inherit; min-height:44px; max-height:180px; }
 button { background:var(--accent); color:#08111f; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
 button:disabled { opacity:.5; cursor:default; }
 #stop { background:#3a3a3a; color:var(--text); }
-.assistant pre { background:#0d0d0d; border:1px solid var(--border); border-radius:6px; padding:8px; overflow:auto; white-space:pre; }
-.assistant code { font-family: ui-monospace, monospace; background:#0d0d0d; padding:1px 4px; border-radius:4px; }
+.assistant pre { background:var(--code-bg); border:1px solid var(--border); border-radius:6px; padding:8px; overflow:auto; white-space:pre; }
+.assistant code { font-family: ui-monospace, monospace; background:var(--code-bg); color:var(--code-text); padding:1px 4px; border-radius:4px; }
 .assistant pre code { background:none; padding:0; }
+pre code.hljs { background:var(--code-bg); color:var(--code-text); }
+.hljs-comment, .hljs-quote { color:var(--code-comment); }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal { color:var(--code-keyword); }
+.hljs-string, .hljs-doctag { color:var(--code-string); }
+.hljs-number, .hljs-symbol, .hljs-bullet { color:var(--code-number); }
+.hljs-title, .hljs-section, .hljs-function .hljs-title { color:var(--code-title); }
+.hljs-type, .hljs-class .hljs-title { color:var(--code-type); }
+.hljs-built_in, .hljs-builtin-name { color:var(--code-builtin); }
+.hljs-meta, .hljs-meta .hljs-keyword { color:var(--code-meta); }
+.hljs-attr, .hljs-attribute { color:var(--code-attr); }
+.hljs-tag, .hljs-name, .hljs-selector-id, .hljs-selector-class { color:var(--code-tag); }
+.hljs-regexp { color:var(--code-regexp); }
+.hljs-variable, .hljs-template-variable { color:var(--code-variable); }
+.hljs-addition { color:var(--code-addition); }
+.hljs-deletion { color:var(--code-deletion); }
 .assistant p { margin:0 0 8px; }
 .assistant p:last-child { margin-bottom:0; }
 .assistant h1, .assistant h2, .assistant h3 { margin:10px 0 6px; line-height:1.25; }
@@ -88,6 +91,7 @@ button:disabled { opacity:.5; cursor:default; }
 <option value="dark">Dark</option>
 <option value="midnight">Midnight</option>
 <option value="solarized">Solarized</option>
+<option value="golden-sand">Golden Sand</option>
 <option value="light">Light</option>
 <option value="sepia">Sepia</option>
 </select>
@@ -95,7 +99,6 @@ button:disabled { opacity:.5; cursor:default; }
 <main id="log"></main>
 <form id="form">
 <textarea id="prompt" placeholder="Ask the local model… (Enter to send, Shift+Enter for a newline)" autofocus></textarea>
-<button id="mode" type="button" title="Toggle direct shell mode">Shell</button>
 <button id="stop" type="button" disabled>Stop</button>
 <button id="send" type="submit">Send</button>
 </form>
@@ -111,10 +114,8 @@ const promptEl = document.getElementById('prompt');
 const sendEl = document.getElementById('send');
 const stopEl = document.getElementById('stop');
 const themeEl = document.getElementById('theme');
-const modeEl = document.getElementById('mode');
 
 let controller = null;
-let shellMode = localStorage.getItem('localHarnessShellMode') === '1';
 
 let assistantEl = null;
 let openTool = null;
@@ -136,12 +137,21 @@ function add(className, text = '') {
 
 if (!token) setStatus('missing token in URL', true);
 
+const darkCode = { bg: '#0d0d0d', text: '#e6e6e6', comment: '#8b949e', keyword: '#ff7b72', string: '#a5d6ff', number: '#79c0ff', title: '#d2a8ff', type: '#ffa657', builtin: '#79c0ff', meta: '#d2a8ff', attr: '#79c0ff', tag: '#7ee787', regexp: '#ffa657', variable: '#ffa657', addition: '#aff5b4', deletion: '#ffdcd7' };
+
 const themes = {
-  dark: { bg: '#111111', panel: '#1a1a1a', text: '#e8e8e8', muted: '#9a9a9a', border: '#2a2a2a' },
-  midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40' },
-  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59' },
-  light: { bg: '#f5f5f5', panel: '#ffffff', text: '#222222', muted: '#666666', border: '#dddddd' },
-  sepia: { bg: '#f4ecd8', panel: '#fbf6e9', text: '#3a3226', muted: '#7a6a55', border: '#ddd0b8' },
+  dark: { bg: '#111111', panel: '#1a1a1a', text: '#e8e8e8', muted: '#9a9a9a', border: '#2a2a2a', accent: '#6ea8fe', code: darkCode },
+  midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40', accent: '#6ea8fe', code: darkCode },
+  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59', accent: '#268BD2', code: darkCode },
+  light: { bg: '#f5f5f5', panel: '#ffffff', text: '#222222', muted: '#666666', border: '#dddddd', accent: '#0969da', code: {
+    bg: '#f6f8fa', text: '#24292f', comment: '#6e7781', keyword: '#cf222e', string: '#0a3069', number: '#0550ae', title: '#8250df', type: '#953800', builtin: '#0550ae', meta: '#8250df', attr: '#0550ae', tag: '#116329', regexp: '#116329', variable: '#953800', addition: '#116329', deletion: '#82071e'
+  } },
+  sepia: { bg: '#f4ecd8', panel: '#fbf6e9', text: '#3a3226', muted: '#7a6a55', border: '#ddd0b8', accent: '#8a5a00', code: {
+    bg: '#fbf6e9', text: '#3a3226', comment: '#8a7a63', keyword: '#b35900', string: '#2f6f6f', number: '#7a4b00', title: '#6a4c93', type: '#8a5a00', builtin: '#2f6f6f', meta: '#6a4c93', attr: '#2f6f6f', tag: '#4f6b2f', regexp: '#a33a2a', variable: '#8a5a00', addition: '#4f6b2f', deletion: '#a33a2a'
+  } },
+  'golden-sand': { bg: '#F8E7B7', panel: '#F6EFDC', text: '#586E75', muted: '#657B83', border: '#D9C79C', accent: '#268BD2', code: {
+    bg: '#F6EFDC', text: '#586E75', comment: '#93A1A1', keyword: '#CB4B16', string: '#2AA198', number: '#2AA198', title: '#268BD2', type: '#B58900', builtin: '#268BD2', meta: '#6C71C4', attr: '#B58900', tag: '#268BD2', regexp: '#DC322F', variable: '#586E75', addition: '#859900', deletion: '#DC322F'
+  } }
 };
 
 function applyTheme(name) {
@@ -152,26 +162,17 @@ function applyTheme(name) {
   root.style.setProperty('--text', theme.text);
   root.style.setProperty('--muted', theme.muted);
   root.style.setProperty('--border', theme.border);
+  root.style.setProperty('--accent', theme.accent);
+  const code = theme.code || darkCode;
+  for (const [key, value] of Object.entries(code)) {
+    root.style.setProperty('--code-' + key, value);
+  }
   themeEl.value = name;
   localStorage.setItem('localHarnessTheme', name);
 }
 
 themeEl.addEventListener('change', () => applyTheme(themeEl.value));
 applyTheme(localStorage.getItem('localHarnessTheme') || 'dark');
-
-function setShellMode(enabled) {
-  shellMode = enabled;
-  modeEl.classList.toggle('active', enabled);
-  modeEl.textContent = enabled ? 'Shell ✓' : 'Shell';
-  promptEl.placeholder = enabled
-    ? 'Enter a shell command… (Enter to run)'
-    : 'Ask the local model… (Enter to send, Shift+Enter for a newline)';
-  sendEl.textContent = enabled ? 'Run' : 'Send';
-  localStorage.setItem('localHarnessShellMode', enabled ? '1' : '0');
-}
-
-modeEl.addEventListener('click', () => setShellMode(!shellMode));
-setShellMode(shellMode);
 
 
 function escapeHtml(text) {
@@ -231,102 +232,7 @@ function prettyJson(value) {
   try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
 }
 
-function addTerminalCard(command) {
-  const card = document.createElement('div');
-  card.className = 'terminal';
-  card.innerHTML = '<div class="terminal-head"><span class="terminal-dot" style="background:#ff5f57"></span><span class="terminal-dot" style="background:#febc2e"></span><span class="terminal-dot" style="background:#28c840"></span><span class="terminal-title">Terminal</span><button type="button" class="tool-copy terminal-copy">copy command</button></div><div class="terminal-body"><div class="terminal-prompt">$ <span class="terminal-cmd"></span></div><pre class="terminal-output"></pre><div class="terminal-exit">running…</div></div>';
-  card.querySelector('.terminal-cmd').textContent = command;
-  const copy = card.querySelector('.terminal-copy');
-  copy.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      copy.textContent = 'copied';
-      setTimeout(() => { copy.textContent = 'copy command'; }, 1200);
-    } catch (error) {
-      copy.textContent = 'failed';
-    }
-  });
-  log.appendChild(card);
-  log.scrollTop = log.scrollHeight;
-  return card;
-}
-
-function setTerminalResult(card, output, status) {
-  card.querySelector('.terminal-output').textContent = output || '';
-  const exit = card.querySelector('.terminal-exit');
-  exit.textContent = status;
-  exit.className = 'terminal-exit ' + ((status === 'error' || status === 'denied') ? 'error' : 'ok');
-  log.scrollTop = log.scrollHeight;
-}
-
-function askShellApproval(reason, command) {
-  return new Promise((resolve) => {
-    const card = document.createElement('div');
-    card.className = 'approval-card';
-    card.innerHTML = '<div class="approval-title">⚠ Approval required</div>'
-      + '<div class="approval-reason"></div>'
-      + '<pre><code></code></pre>'
-      + '<div class="approval-actions"><button type="button" data-decision="approve">Run</button><button type="button" data-decision="deny">Deny</button></div>';
-    card.querySelector('.approval-reason').textContent = reason;
-    card.querySelector('code').textContent = command;
-    card.querySelectorAll('button').forEach((button) => {
-      button.addEventListener('click', () => {
-        card.classList.add('resolved');
-        card.querySelectorAll('button').forEach((other) => {
-          other.disabled = true;
-          if (other !== button) other.style.display = 'none';
-        });
-        button.textContent = button.dataset.decision === 'approve' ? 'Approved' : 'Denied';
-        resolve(button.dataset.decision === 'approve');
-      });
-    });
-    log.appendChild(card);
-    log.scrollTop = log.scrollHeight;
-  });
-}
-
-async function runShell(command) {
-  const card = addTerminalCard(command);
-  try {
-    let response = await fetch('/api/shell?token=' + encodeURIComponent(token), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
-    });
-    if (response.status === 403) {
-      const info = await response.json().catch(() => ({}));
-      if (info.requires_approval) {
-        const approved = await askShellApproval(info.reason || 'destructive command', command);
-        if (!approved) {
-          setTerminalResult(card, 'approval denied by user', 'denied');
-          return;
-        }
-        response = await fetch('/api/shell?token=' + encodeURIComponent(token), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command, confirm: true }),
-        });
-      }
-    }
-    const info = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setTerminalResult(card, info.error || info.reason || ('HTTP ' + response.status), 'error');
-      return;
-    }
-    const output = info.output || '';
-    const isError = /^tool error/i.test(output) || /\n\[exit [1-9]/.test(output);
-    setTerminalResult(card, output, info.dry_run ? 'dry-run' : isError ? 'error' : 'done');
-  } catch (error) {
-    setTerminalResult(card, String(error), 'error');
-  }
-}
-
 function addToolCard(name, argumentsText) {
-  if (name === 'bash') {
-    let command = argumentsText;
-    try { command = JSON.parse(argumentsText).command || argumentsText; } catch (error) {}
-    return addTerminalCard(command);
-  }
   const card = document.createElement('details');
   card.className = 'tool-card';
   card.innerHTML = '<summary>🔧 <code>' + escapeHtml(name) + '</code> <span class="tool-status">running…</span></summary>'
@@ -363,14 +269,10 @@ function finishToolCard(card, chars, preview) {
   const denied = /^approval denied/i.test(shown);
   const dry = /^DRY-RUN/.test(shown);
   const isError = denied || /^tool error:/i.test(shown) || /\[exit [1-9]/.test(shown);
-  if (card.classList.contains('terminal')) {
-    setTerminalResult(card, shown + (chars > shown.length ? '\n… (' + chars + ' chars total)' : ''), denied ? 'denied' : dry ? 'dry-run' : isError ? 'error' : 'done');
-    return;
-  }
   card.querySelector('.tool-result').hidden = false;
   card.querySelector('.tool-result-text').textContent = shown + (chars > shown.length ? '\n… (' + chars + ' chars total)' : '');
   const status = card.querySelector('.tool-status');
-  status.textContent = denied ? 'denied' : isError ? 'error' : 'done';
+  status.textContent = denied ? 'denied' : dry ? 'dry-run' : isError ? 'error' : 'done';
   status.classList.add(isError ? 'error' : 'ok');
   card.classList.toggle('tool-error', isError);
   if (isError) card.open = true;
@@ -428,21 +330,6 @@ function handleBlock(block) {
 async function send() {
   const text = promptEl.value.trim();
   if (!text || !token || sendEl.disabled) return;
-  if (shellMode || /^[!$]\s*/.test(text)) {
-    const command = text.replace(/^[!$]\s*/, '');
-    promptEl.value = '';
-    if (!command) return;
-    sendEl.disabled = true;
-    setStatus('running');
-    try {
-      await runShell(command);
-    } finally {
-      sendEl.disabled = false;
-      setStatus('ready');
-      promptEl.focus();
-    }
-    return;
-  }
   add('user', text);
   promptEl.value = '';
   sendEl.disabled = true;
