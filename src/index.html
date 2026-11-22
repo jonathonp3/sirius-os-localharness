@@ -8,17 +8,17 @@
 :root { color-scheme: dark; --bg:#111; --panel:#1a1a1a; --text:#e8e8e8; --muted:#9a9a9a; --accent:#6ea8fe; --border:#2a2a2a;
 --code-bg:#0d0d0d; --code-text:#e6e6e6; --code-comment:#8b949e; --code-keyword:#ff7b72; --code-string:#a5d6ff; --code-number:#79c0ff; --code-title:#d2a8ff; --code-type:#ffa657; --code-builtin:#79c0ff; --code-meta:#d2a8ff; --code-attr:#79c0ff; --code-tag:#7ee787; --code-regexp:#ffa657; --code-variable:#ffa657; --code-addition:#aff5b4; --code-deletion:#ffdcd7; }
 * { box-sizing: border-box; }
-body { margin:0; font:14px/1.5 ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+body { margin:0; font:15px/1.5 ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
 header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; }
 header h1 { font-size:14px; font-weight:600; margin:0; }
-#status { color:var(--muted); font-size:12px; margin-left:auto; }
+#status { color:var(--muted); font-size:13px; margin-left:auto; }
 #status.error { color:#ff6b6b; }
 #log { flex:1; overflow:auto; padding:18px; display:flex; flex-direction:column; gap:10px; }
 .bubble { max-width:min(760px, 92%); padding:10px 12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
 .user { align-self:flex-end; background:#23405f; }
 .assistant { align-self:flex-start; background:var(--panel); border:1px solid var(--border); white-space:normal; }
 .tool { align-self:flex-start; font:12px ui-monospace, monospace; color:var(--muted); background:#151515; border:1px dashed var(--border); padding:4px 8px; border-radius:6px; max-width:92%; white-space:pre-wrap; }
-.meta { align-self:flex-start; color:var(--muted); font-size:11px; }
+.meta { align-self:flex-start; color:var(--muted); font-size:13px; }
 .error { align-self:flex-start; color:#ffb3b3; background:#2a1515; border:1px solid #5a2a2a; padding:8px 10px; border-radius:8px; white-space:pre-wrap; }
 .assistant pre { position:relative; }
 .assistant table { border-collapse:collapse; margin:0 0 8px; display:block; overflow:auto; }
@@ -29,7 +29,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .assistant hr { border:0; border-top:1px solid var(--border); margin:10px 0; }
 .copy-btn { position:absolute; top:4px; right:4px; background:#2a2a2a; color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:2px 6px; cursor:pointer; opacity:0; transition:opacity .15s; }
 .assistant pre:hover .copy-btn, .copy-btn:focus { opacity:1; }
-.tool-card { align-self:flex-start; width:min(760px,92%); background:var(--panel); border:1px solid var(--border); border-radius:8px; font:12px ui-monospace, monospace; color:var(--muted); }
+.tool-card { align-self:flex-start; width:min(760px,92%); background:var(--panel); border:1px solid var(--border); border-radius:8px; font:13px ui-monospace, monospace; color:var(--muted); }
 .tool-card summary { cursor:pointer; padding:6px 10px; color:var(--text); }
 .tool-card[open] summary { border-bottom:1px solid var(--border); }
 .tool-card summary code { color:var(--accent); }
@@ -37,7 +37,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-status.ok { color:#68d391; }
 .tool-status.error { color:#fc8181; }
 .tool-block { padding:6px 10px; }
-.tool-label { text-transform:uppercase; font-size:10px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; display:flex; justify-content:space-between; align-items:center; gap:6px; user-select:none; }
+.tool-label { text-transform:uppercase; font-size:11px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; display:flex; justify-content:space-between; align-items:center; gap:6px; user-select:none; }
 .tool-buttons { display:flex; gap:4px; user-select:none; }
 .tool-card summary { user-select:none; }
 .tool-card pre { margin:0; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
@@ -45,20 +45,32 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .approval-card.resolved { opacity:.85; }
 .approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
 .approval-title { color:#f6c177; font-weight:600; margin-bottom:4px; }
-.approval-reason { color:var(--muted); font-size:12px; margin-bottom:6px; }
+.approval-reason { color:var(--muted); font-size:13px; margin-bottom:6px; }
 .approval-card pre { margin:0 0 8px; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; white-space:pre-wrap; max-height:240px; overflow:auto; }
 .approval-actions { display:flex; gap:8px; }
 .approval-actions button { padding:5px 12px; border:0; border-radius:6px; cursor:pointer; font-weight:600; }
 .approval-actions button[data-decision="approve"] { background:#68d391; color:#08110c; }
 .approval-actions button[data-decision="deny"] { background:#3a3a3a; color:var(--text); }
 .approval-actions button:disabled { opacity:.5; cursor:default; }
+textarea::placeholder { color:var(--muted); opacity:1; }
 #spell { background:#3a3a3a; color:var(--text); }
 #spell.active { background:var(--accent); color:#08111f; }
 header select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px; }
 form { border-top:1px solid var(--border); padding:12px; display:flex; gap:10px; background:var(--panel); }
-textarea { flex:1; resize:none; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; font:inherit; min-height:44px; max-height:180px; }
+#editor { position:relative; flex:1; display:flex; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
+#editor:focus-within { border-color:var(--accent); }
+#editor textarea { position:relative; z-index:1; flex:1; resize:none; background:transparent; color:var(--text); border:0; padding:10px; font:inherit; line-height:1.5; min-height:44px; max-height:180px; white-space:pre-wrap; overflow-wrap:break-word; scrollbar-width:none; }
+#editor textarea::-webkit-scrollbar { display:none; }
+#spell-layer { position:absolute; inset:0; z-index:0; padding:10px; font:inherit; line-height:1.5; white-space:pre-wrap; overflow-wrap:break-word; color:transparent; pointer-events:none; overflow:hidden; }
+#spell-layer mark { background:transparent; color:transparent; border-bottom:2px solid #e5534b; }
+#spell-menu { position:fixed; z-index:100; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:4px; min-width:160px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+#spell-menu button { display:block; width:100%; text-align:left; background:none; color:var(--text); border:0; border-radius:4px; padding:5px 8px; cursor:pointer; }
+#spell-menu button:hover { background:var(--bg); }
+.spell-menu-title { font-size:11px; color:var(--muted); padding:3px 8px; }
+.spell-menu-empty { font-size:12px; color:var(--muted); padding:4px 8px; }
 button { background:var(--accent); color:#08111f; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
 button:disabled { opacity:.5; cursor:default; }
+textarea::placeholder { color:var(--muted); opacity:1; }
 #stop { background:#3a3a3a; color:var(--text); }
 .assistant pre { background:var(--code-bg); border:1px solid var(--border); border-radius:6px; padding:8px; overflow:auto; white-space:pre; }
 .assistant code { font-family: ui-monospace, monospace; background:var(--code-bg); color:var(--code-text); padding:1px 4px; border-radius:4px; }
@@ -96,17 +108,25 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <option value="midnight">Midnight</option>
 <option value="solarized">Solarized</option>
 <option value="golden-sand">Golden Sand</option>
-<option value="light">Light</option>
-<option value="sepia">Sepia</option>
+</select>
+<select id="scale" title="Interface scale">
+<option value="0.8">80%</option>
+<option value="0.9">90%</option>
+<option value="1" selected>100%</option>
+<option value="1.1">110%</option>
+<option value="1.25">125%</option>
+<option value="1.5">150%</option>
 </select>
 <span id="status">ready</span></header>
 <main id="log"></main>
 <form id="form">
-<textarea id="prompt" spellcheck="true" lang="en-AU" autocorrect="on" autocapitalize="sentences" placeholder="Ask the local model… (Enter to send, Shift+Enter for a newline)" autofocus></textarea>
+<div id="editor"><div id="spell-layer" aria-hidden="true"></div>
+<textarea id="prompt" spellcheck="false" lang="en-AU" autocorrect="on" autocapitalize="sentences" placeholder="Ask the local model… (Enter to send, Shift+Enter for a newline)" autofocus></textarea></div>
 <button id="spell" type="button" title="Toggle spellcheck">Spell</button>
 <button id="stop" type="button" disabled>Stop</button>
 <button id="send" type="submit">Send</button>
 </form>
+<script src="/assets/typo.js"></script>
 <script src="/assets/markdown-it.min.js"></script>
 <script src="/assets/highlight.min.js"></script>
 <script src="/assets/purify.min.js"></script>
@@ -120,6 +140,7 @@ const sendEl = document.getElementById('send');
 const stopEl = document.getElementById('stop');
 const themeEl = document.getElementById('theme');
 const spellEl = document.getElementById('spell');
+const scaleEl = document.getElementById('scale');
 
 let controller = null;
 
@@ -146,22 +167,17 @@ if (!token) setStatus('missing token in URL', true);
 const darkCode = { bg: '#0d0d0d', text: '#e6e6e6', comment: '#8b949e', keyword: '#ff7b72', string: '#a5d6ff', number: '#79c0ff', title: '#d2a8ff', type: '#ffa657', builtin: '#79c0ff', meta: '#d2a8ff', attr: '#79c0ff', tag: '#7ee787', regexp: '#ffa657', variable: '#ffa657', addition: '#aff5b4', deletion: '#ffdcd7' };
 
 const themes = {
-  dark: { bg: '#111111', panel: '#1a1a1a', text: '#e8e8e8', muted: '#9a9a9a', border: '#2a2a2a', accent: '#6ea8fe', code: darkCode },
-  midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40', accent: '#6ea8fe', code: darkCode },
-  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59', accent: '#268BD2', code: darkCode },
-  light: { bg: '#f5f5f5', panel: '#ffffff', text: '#222222', muted: '#666666', border: '#dddddd', accent: '#0969da', code: {
-    bg: '#f6f8fa', text: '#24292f', comment: '#6e7781', keyword: '#cf222e', string: '#0a3069', number: '#0550ae', title: '#8250df', type: '#953800', builtin: '#0550ae', meta: '#8250df', attr: '#0550ae', tag: '#116329', regexp: '#116329', variable: '#953800', addition: '#116329', deletion: '#82071e'
-  } },
-  sepia: { bg: '#f4ecd8', panel: '#fbf6e9', text: '#3a3226', muted: '#7a6a55', border: '#ddd0b8', accent: '#8a5a00', code: {
-    bg: '#fbf6e9', text: '#3a3226', comment: '#8a7a63', keyword: '#b35900', string: '#2f6f6f', number: '#7a4b00', title: '#6a4c93', type: '#8a5a00', builtin: '#2f6f6f', meta: '#6a4c93', attr: '#2f6f6f', tag: '#4f6b2f', regexp: '#a33a2a', variable: '#8a5a00', addition: '#4f6b2f', deletion: '#a33a2a'
-  } },
-  'golden-sand': { bg: '#F8E7B7', panel: '#F6EFDC', text: '#586E75', muted: '#657B83', border: '#D9C79C', accent: '#268BD2', code: {
-    bg: '#F6EFDC', text: '#586E75', comment: '#93A1A1', keyword: '#CB4B16', string: '#2AA198', number: '#2AA198', title: '#268BD2', type: '#B58900', builtin: '#268BD2', meta: '#6C71C4', attr: '#B58900', tag: '#268BD2', regexp: '#DC322F', variable: '#586E75', addition: '#859900', deletion: '#DC322F'
+  dark: { bg: '#111111', panel: '#1a1a1a', text: '#e8e8e8', muted: '#9a9a9a', border: '#2a2a2a', accent: '#6ea8fe', scheme: 'dark', code: darkCode },
+  midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40', accent: '#6ea8fe', scheme: 'dark', code: darkCode },
+  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59', accent: '#268BD2', scheme: 'dark', code: darkCode },
+  'golden-sand': { bg: '#F8E7B7', panel: '#F6EFDC', text: '#073642', muted: '#586E75', border: '#D9C79C', accent: '#268BD2', scheme: 'light', code: {
+    bg: '#F6EFDC', text: '#073642', comment: '#657B83', keyword: '#CB4B16', string: '#2AA198', number: '#2AA198', title: '#268BD2', type: '#B58900', builtin: '#268BD2', meta: '#6C71C4', attr: '#B58900', tag: '#268BD2', regexp: '#DC322F', variable: '#073642', addition: '#859900', deletion: '#DC322F'
   } }
 };
 
 function applyTheme(name) {
-  const theme = themes[name] || themes.dark;
+  if (!themes[name]) name = 'dark';
+  const theme = themes[name];
   const root = document.documentElement;
   root.style.setProperty('--bg', theme.bg);
   root.style.setProperty('--panel', theme.panel);
@@ -169,6 +185,7 @@ function applyTheme(name) {
   root.style.setProperty('--muted', theme.muted);
   root.style.setProperty('--border', theme.border);
   root.style.setProperty('--accent', theme.accent);
+  root.style.colorScheme = theme.scheme;
   const code = theme.code || darkCode;
   for (const [key, value] of Object.entries(code)) {
     root.style.setProperty('--code-' + key, value);
@@ -180,18 +197,153 @@ function applyTheme(name) {
 themeEl.addEventListener('change', () => applyTheme(themeEl.value));
 applyTheme(localStorage.getItem('localHarnessTheme') || 'dark');
 
+function applyScale(value) {
+  const scale = parseFloat(value) || 1;
+  document.documentElement.style.setProperty('--ui-scale', String(scale));
+  document.body.style.zoom = String(scale);
+  document.body.style.width = 'calc(100vw / ' + scale + ')';
+  document.body.style.height = 'calc(100vh / ' + scale + ')';
+  scaleEl.value = String(scale);
+  localStorage.setItem('localHarnessScale', String(scale));
+}
+
+scaleEl.addEventListener('change', () => applyScale(scaleEl.value));
+applyScale(localStorage.getItem('localHarnessScale') || '1');
+
+const spellLayer = document.getElementById('spell-layer');
+const spellMenu = document.getElementById('spell-menu');
+const spellIgnore = new Set([
+  'ls','cd','git','rg','sed','awk','grep','cat','cp','mv','rm','find','sudo','dnf',
+  'flatpak','cargo','rustc','npm','pnpm','ssh','scp','curl','wget','tar','xz','zip',
+  'unzip','chmod','chown','mkdir','rmdir','touch','echo','printf','env','export',
+  'source','bash','sh','zsh','fish','python','python3','node','deno','bun','podman',
+  'docker','systemctl','journalctl','rpm','ostree','localhost','http','https'
+]);
+let spellDictionary = null;
 let spellcheckEnabled = localStorage.getItem('localHarnessSpellcheck') !== '0';
+let spellTimer = null;
+
+async function loadSpellDictionary() {
+  try {
+    const [aff, dic] = await Promise.all([
+      fetch('/assets/en_AU.aff').then((response) => { if (!response.ok) throw new Error('aff ' + response.status); return response.text(); }),
+      fetch('/assets/en_AU.dic').then((response) => { if (!response.ok) throw new Error('dic ' + response.status); return response.text(); })
+    ]);
+    spellDictionary = new Typo('en_AU', aff, dic, { platform: 'any' });
+    if (spellcheckEnabled) renderSpellLayer();
+  } catch (error) {
+    console.error('spellcheck dictionary failed', error);
+  }
+}
+
+function skipSpellWord(word) {
+  return word.length <= 2 || spellIgnore.has(word.toLowerCase());
+}
+
+function renderSpellLayer() {
+  if (!spellcheckEnabled || !spellDictionary) {
+    spellLayer.innerHTML = '';
+    return;
+  }
+  const text = promptEl.value;
+  const pattern = /[A-Za-z][A-Za-z'’-]*/g;
+  let html = '';
+  let last = 0;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const word = match[0];
+    if (skipSpellWord(word) || spellDictionary.check(word)) continue;
+    html += escapeHtml(text.slice(last, match.index));
+    html += '<mark>' + escapeHtml(word) + '</mark>';
+    last = match.index + word.length;
+  }
+  html += escapeHtml(text.slice(last));
+  spellLayer.innerHTML = html + (text.endsWith('\n') ? ' ' : '');
+  spellLayer.scrollTop = promptEl.scrollTop;
+}
+
+function scheduleSpell() {
+  if (!spellcheckEnabled) {
+    spellLayer.innerHTML = '';
+    return;
+  }
+  clearTimeout(spellTimer);
+  spellTimer = setTimeout(renderSpellLayer, 180);
+}
+
+function showSpellMenu(word, start, end, x, y) {
+  spellMenu.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'spell-menu-title';
+  title.textContent = word;
+  spellMenu.appendChild(title);
+  const suggestions = spellDictionary.suggest(word, 6);
+  if (!suggestions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'spell-menu-empty';
+    empty.textContent = 'No suggestions';
+    spellMenu.appendChild(empty);
+  }
+  suggestions.forEach((suggestion) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = suggestion;
+    button.addEventListener('click', () => {
+      promptEl.setRangeText(suggestion, start, end, 'end');
+      promptEl.dispatchEvent(new Event('input'));
+      spellMenu.hidden = true;
+      promptEl.focus();
+    });
+    spellMenu.appendChild(button);
+  });
+  spellMenu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+  spellMenu.style.top = Math.min(y, window.innerHeight - 220) + 'px';
+  spellMenu.hidden = false;
+}
+
+promptEl.addEventListener('input', scheduleSpell);
+promptEl.addEventListener('scroll', () => { spellLayer.scrollTop = promptEl.scrollTop; });
+window.addEventListener('resize', scheduleSpell);
+promptEl.addEventListener('contextmenu', (event) => {
+  if (!spellcheckEnabled || !spellDictionary) return;
+  const text = promptEl.value;
+  const position = promptEl.selectionStart;
+  const pattern = /[A-Za-z][A-Za-z'’-]*/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (position >= start && position <= end) {
+      const word = match[0];
+      if (skipSpellWord(word) || spellDictionary.check(word)) { spellMenu.hidden = true; return; }
+      event.preventDefault();
+      showSpellMenu(word, start, end, event.clientX, event.clientY);
+      return;
+    }
+  }
+  spellMenu.hidden = true;
+});
+document.addEventListener('click', (event) => {
+  if (!spellMenu.contains(event.target)) spellMenu.hidden = true;
+});
 
 function setSpellcheck(enabled) {
   spellcheckEnabled = enabled;
-  promptEl.spellcheck = enabled;
+  promptEl.spellcheck = false;
   spellEl.classList.toggle('active', enabled);
   spellEl.textContent = enabled ? 'Spell ✓' : 'Spell';
   localStorage.setItem('localHarnessSpellcheck', enabled ? '1' : '0');
+  if (enabled) {
+    scheduleSpell();
+  } else {
+    spellLayer.innerHTML = '';
+    spellMenu.hidden = true;
+  }
 }
 
 spellEl.addEventListener('click', () => setSpellcheck(!spellcheckEnabled));
 setSpellcheck(spellcheckEnabled);
+loadSpellDictionary();
 
 
 

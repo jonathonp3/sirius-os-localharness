@@ -318,11 +318,9 @@ choice in `localStorage`:
 - Dark
 - Midnight
 - Solarized
-- Light
-- Sepia
 - **Golden Sand** — derived from `themes/solarized-light-golden-sand.xml`
-  (GtkSourceView scheme): golden-sand background, base01 text, Solarized accent
-  colors, and matching highlight.js token colors.
+  (GtkSourceView scheme): golden-sand background, dark base02 text, Solarized
+  accent colors, and matching highlight.js token colors.
 
 The selected theme also themes code blocks and tool cards, not just the page
 background. `themes/README.md` documents the XML-to-UI mapping.
@@ -333,10 +331,22 @@ instead of reproducing the full transcript.
 
 ## Spellcheck
 
-The prompt field has a **Spell** toggle (enabled by default, remembered in
-`localStorage`). It sets `spellcheck="true"` with `lang="en-AU"`; right-click
-suggestions come from the browser's dictionary. The native WebKit window also
-enables WebKit's spellchecking and grammar checking in its settings.
+The prompt uses an in-app **en_AU Hunspell dictionary** via Typo.js, so it works
+in both the browser and the native WebKit window without relying on the
+browser's dictionary:
+
+- red underlines for misspelled words;
+- right-click a misspelled word for suggestions;
+- the **Spell** toggle enables/disables it and is remembered in `localStorage`.
+
+The dictionary and Typo.js are bundled under `src/assets/` and served locally;
+no network lookup is used.
+
+## Interface scale
+
+The header **80%–150%** selector scales the whole UI like Telegram Desktop's
+interface scale. The choice is remembered in `localStorage`. Base text, session
+metadata, and tool labels were also enlarged for readability.
 
 ## Safety
 

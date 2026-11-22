@@ -142,12 +142,6 @@ def main():
         window.set_titlebar(header)
 
         webview = WebKit.WebView()
-        try:
-            settings = webview.get_settings()
-            settings.set_property("enable-spell-checking", True)
-            settings.set_property("enable-grammar-checking", True)
-        except Exception:
-            pass
         webview.load_uri(url)
 
         reload = Gtk.Button(label="Reload")

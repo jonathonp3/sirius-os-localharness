@@ -29,6 +29,9 @@ const MARKDOWN_JS: &str = include_str!("assets/markdown-it.min.js");
 const HIGHLIGHT_JS: &str = include_str!("assets/highlight.min.js");
 const PURIFY_JS: &str = include_str!("assets/purify.min.js");
 const HIGHLIGHT_CSS: &str = include_str!("assets/highlight.css");
+const TYPO_JS: &str = include_str!("assets/typo.js");
+const EN_AU_AFF: &str = include_str!("assets/en_AU.aff");
+const EN_AU_DIC: &str = include_str!("assets/en_AU.dic");
 
 struct AppState {
     config: agent::Config,
@@ -105,6 +108,9 @@ async fn asset(Path(file): Path<String>) -> Response {
         "highlight.min.js" => ("application/javascript; charset=utf-8", HIGHLIGHT_JS),
         "purify.min.js" => ("application/javascript; charset=utf-8", PURIFY_JS),
         "highlight.css" => ("text/css; charset=utf-8", HIGHLIGHT_CSS),
+        "typo.js" => ("application/javascript; charset=utf-8", TYPO_JS),
+        "en_AU.aff" => ("text/plain; charset=utf-8", EN_AU_AFF),
+        "en_AU.dic" => ("text/plain; charset=utf-8", EN_AU_DIC),
         _ => return (StatusCode::NOT_FOUND, "not found").into_response(),
     };
     let mut response = content.into_response();
