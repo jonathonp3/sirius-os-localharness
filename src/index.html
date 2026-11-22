@@ -6,7 +6,7 @@
 <title>Local Harness</title>
 <style>
 :root { color-scheme: dark; --bg:#111; --panel:#1a1a1a; --text:#e8e8e8; --muted:#9a9a9a; --accent:#6ea8fe; --border:#2a2a2a;
---code-bg:#0d0d0d; --code-text:#e6e6e6; --code-comment:#8b949e; --code-keyword:#ff7b72; --code-string:#a5d6ff; --code-number:#79c0ff; --code-title:#d2a8ff; --code-type:#ffa657; --code-builtin:#79c0ff; --code-meta:#d2a8ff; --code-attr:#79c0ff; --code-tag:#7ee787; --code-regexp:#ffa657; --code-variable:#ffa657; --code-addition:#aff5b4; --code-deletion:#ffdcd7; }
+--code-bg:#0d0d0d; --code-text:#e6e6e6; --code-comment:#8b949e; --code-keyword:#ff7b72; --code-string:#a5d6ff; --code-number:#79c0ff; --code-title:#d2a8ff; --code-type:#ffa657; --code-builtin:#79c0ff; --code-meta:#d2a8ff; --code-attr:#79c0ff; --code-tag:#7ee787; --code-regexp:#ffa657; --code-variable:#ffa657; --code-addition:#aff5b4; --code-deletion:#ffdcd7; --ok:#68d391; }
 * { box-sizing: border-box; }
 body { margin:0; font:15px/1.5 ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
 header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; }
@@ -34,14 +34,14 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-card[open] summary { border-bottom:1px solid var(--border); }
 .tool-card summary code { color:var(--accent); }
 .tool-status { font-size:11px; color:var(--muted); margin-left:6px; }
-.tool-status.ok { color:#68d391; }
+.tool-status.ok { color:var(--ok); font-weight:600; }
 .tool-status.error { color:#fc8181; }
 .tool-block { padding:6px 10px; }
 .tool-label { text-transform:uppercase; font-size:11px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; display:flex; justify-content:space-between; align-items:center; gap:6px; user-select:none; }
-.tool-buttons { display:flex; gap:4px; user-select:none; }
+.tool-buttons { display:flex; flex-wrap:wrap; gap:5px; user-select:none; }
 .tool-card summary { user-select:none; }
 .tool-card pre { margin:0; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
-.tool-copy { float:none; text-transform:none; background:var(--panel); color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:10px; padding:1px 6px; cursor:pointer; }
+.tool-copy { float:none; text-transform:none; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:5px; font-size:13px; padding:4px 9px; cursor:pointer; }
 .approval-card.resolved { opacity:.85; }
 .approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
 .approval-title { color:#f6c177; font-weight:600; margin-bottom:4px; }
@@ -167,10 +167,10 @@ if (!token) setStatus('missing token in URL', true);
 const darkCode = { bg: '#0d0d0d', text: '#e6e6e6', comment: '#8b949e', keyword: '#ff7b72', string: '#a5d6ff', number: '#79c0ff', title: '#d2a8ff', type: '#ffa657', builtin: '#79c0ff', meta: '#d2a8ff', attr: '#79c0ff', tag: '#7ee787', regexp: '#ffa657', variable: '#ffa657', addition: '#aff5b4', deletion: '#ffdcd7' };
 
 const themes = {
-  dark: { bg: '#111111', panel: '#1a1a1a', text: '#e8e8e8', muted: '#9a9a9a', border: '#2a2a2a', accent: '#6ea8fe', scheme: 'dark', code: darkCode },
-  midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40', accent: '#6ea8fe', scheme: 'dark', code: darkCode },
-  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59', accent: '#268BD2', scheme: 'dark', code: darkCode },
-  'golden-sand': { bg: '#F8E7B7', panel: '#F6EFDC', text: '#073642', muted: '#586E75', border: '#D9C79C', accent: '#268BD2', scheme: 'light', code: {
+  dark: { bg: '#111111', panel: '#1a1a1a', text: '#e8e8e8', muted: '#9a9a9a', border: '#2a2a2a', accent: '#6ea8fe', scheme: 'dark', ok: '#68d391', code: darkCode },
+  midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40', accent: '#6ea8fe', scheme: 'dark', ok: '#68d391', code: darkCode },
+  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59', accent: '#268BD2', scheme: 'dark', ok: '#859900', code: darkCode },
+  'golden-sand': { bg: '#F8E7B7', panel: '#F6EFDC', text: '#073642', muted: '#586E75', border: '#D9C79C', accent: '#268BD2', scheme: 'light', ok: '#2f6b3a', code: {
     bg: '#F6EFDC', text: '#073642', comment: '#657B83', keyword: '#CB4B16', string: '#2AA198', number: '#2AA198', title: '#268BD2', type: '#B58900', builtin: '#268BD2', meta: '#6C71C4', attr: '#B58900', tag: '#268BD2', regexp: '#DC322F', variable: '#073642', addition: '#859900', deletion: '#DC322F'
   } }
 };
@@ -185,6 +185,7 @@ function applyTheme(name) {
   root.style.setProperty('--muted', theme.muted);
   root.style.setProperty('--border', theme.border);
   root.style.setProperty('--accent', theme.accent);
+  root.style.setProperty('--ok', theme.ok || '#68d391');
   root.style.colorScheme = theme.scheme;
   const code = theme.code || darkCode;
   for (const [key, value] of Object.entries(code)) {
@@ -271,6 +272,13 @@ function scheduleSpell() {
   spellTimer = setTimeout(renderSpellLayer, 180);
 }
 
+let spellMenuOpenedAt = 0;
+
+function hideSpellMenu() {
+  spellMenu.hidden = true;
+  spellMenu.style.display = 'none';
+}
+
 function showSpellMenu(word, start, end, x, y) {
   spellMenu.innerHTML = '';
   const title = document.createElement('div');
@@ -291,7 +299,7 @@ function showSpellMenu(word, start, end, x, y) {
     button.addEventListener('click', () => {
       promptEl.setRangeText(suggestion, start, end, 'end');
       promptEl.dispatchEvent(new Event('input'));
-      spellMenu.hidden = true;
+      hideSpellMenu();
       promptEl.focus();
     });
     spellMenu.appendChild(button);
@@ -299,6 +307,20 @@ function showSpellMenu(word, start, end, x, y) {
   spellMenu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
   spellMenu.style.top = Math.min(y, window.innerHeight - 220) + 'px';
   spellMenu.hidden = false;
+  spellMenu.style.display = 'block';
+  spellMenuOpenedAt = Date.now();
+}
+
+function firstMisspelling() {
+  const text = promptEl.value;
+  const pattern = /[A-Za-z][A-Za-z'’-]*/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    if (!skipSpellWord(match[0]) && !spellDictionary.check(match[0])) {
+      return { word: match[0], start: match.index, end: match.index + match[0].length };
+    }
+  }
+  return null;
 }
 
 promptEl.addEventListener('input', scheduleSpell);
@@ -307,21 +329,39 @@ window.addEventListener('resize', scheduleSpell);
 promptEl.addEventListener('contextmenu', (event) => {
   if (!spellcheckEnabled || !spellDictionary) return;
   renderSpellLayer();
-  const mark = Array.from(spellLayer.querySelectorAll('mark')).find((candidate) => {
+  const marks = Array.from(spellLayer.querySelectorAll('mark'));
+  let mark = marks.find((candidate) => {
     const rect = candidate.getBoundingClientRect();
     return event.clientX >= rect.left && event.clientX <= rect.right
       && event.clientY >= rect.top && event.clientY <= rect.bottom;
   });
-  if (!mark) { spellMenu.hidden = true; return; }
-  event.preventDefault();
-  showSpellMenu(mark.textContent, Number(mark.dataset.start), Number(mark.dataset.end), event.clientX, event.clientY);
+  if (!mark && marks.length) {
+    mark = marks.map((candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
+      const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
+      return { candidate, distance: dx * dx + dy * dy };
+    }).sort((a, b) => a.distance - b.distance)[0].candidate;
+  }
+  if (mark) {
+    event.preventDefault();
+    event.stopPropagation();
+    showSpellMenu(mark.textContent, Number(mark.dataset.start), Number(mark.dataset.end), event.clientX, event.clientY);
+    return;
+  }
+  const fallback = firstMisspelling();
+  if (fallback) {
+    event.preventDefault();
+    event.stopPropagation();
+    showSpellMenu(fallback.word, fallback.start, fallback.end, event.clientX, event.clientY);
+  } else {
+    hideSpellMenu();
+  }
 });
 document.addEventListener('click', (event) => {
   if (event.button !== 0) return;
-  if (!spellMenu.contains(event.target)) spellMenu.hidden = true;
-});
-document.addEventListener('click', (event) => {
-  if (!spellMenu.contains(event.target)) spellMenu.hidden = true;
+  if (Date.now() - spellMenuOpenedAt < 250) return;
+  if (!spellMenu.contains(event.target)) hideSpellMenu();
 });
 
 function setSpellcheck(enabled) {
@@ -334,7 +374,7 @@ function setSpellcheck(enabled) {
     scheduleSpell();
   } else {
     spellLayer.innerHTML = '';
-    spellMenu.hidden = true;
+    hideSpellMenu();
   }
 }
 
@@ -444,10 +484,10 @@ function addToolCard(name, argumentsText) {
 
   const outputValue = () => card.querySelector('.tool-result-text').textContent;
   card.querySelector('.tool-result .tool-buttons').appendChild(
-    copyButton('copy output', outputValue, 'Copy raw output. Do not paste raw output into a shell — it will run the lines as commands.')
+    copyButton('copy output', outputValue, 'Copy raw output. Pasting it into a shell runs the lines as commands.')
   );
   card.querySelector('.tool-result .tool-buttons').appendChild(
-    copyButton('copy as comment', () => outputValue().split('\n').map((line) => line ? '# ' + line : '#').join('\n'),
+    copyButton('copy #comment', () => outputValue().split('\n').map((line) => line ? '# ' + line : '#').join('\n'),
       'Copy output prefixed with #, safe to paste into a shell')
   );
 
