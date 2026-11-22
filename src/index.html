@@ -15,7 +15,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 #status.error { color:#ff6b6b; }
 #log { flex:1; overflow:auto; padding:18px; display:flex; flex-direction:column; gap:10px; }
 .bubble { max-width:min(760px, 92%); padding:10px 12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
-.user { align-self:flex-end; background:var(--panel); border:1px solid var(--border); color:var(--text); }
+.user { align-self:flex-end; background:var(--panel); border:1px solid var(--border); color:var(--text); font-size:17px; }
 .assistant { align-self:flex-start; background:var(--panel); border:1px solid var(--border); white-space:normal; }
 .tool { align-self:flex-start; font:12px ui-monospace, monospace; color:var(--muted); background:#151515; border:1px dashed var(--border); padding:4px 8px; border-radius:6px; max-width:92%; white-space:pre-wrap; }
 .meta { align-self:flex-start; color:var(--muted); font-size:14px; }
@@ -40,6 +40,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-label { text-transform:uppercase; font-size:11px; letter-spacing:.08em; color:var(--muted); margin-bottom:2px; display:flex; justify-content:space-between; align-items:center; gap:6px; user-select:none; }
 .tool-buttons { display:flex; flex-wrap:wrap; gap:5px; user-select:none; }
 .tool-card summary { user-select:none; }
+.tool-result-text { font-size:14px; }
 .tool-card pre { margin:0; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
 .tool-copy { float:none; text-transform:none; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:5px; font-size:13px; padding:4px 9px; cursor:pointer; }
 .approval-card.resolved { opacity:.85; }
@@ -326,37 +327,44 @@ function firstMisspelling() {
 promptEl.addEventListener('input', scheduleSpell);
 promptEl.addEventListener('scroll', () => { spellLayer.scrollTop = promptEl.scrollTop; });
 window.addEventListener('resize', scheduleSpell);
-promptEl.addEventListener('contextmenu', (event) => {
-  if (!spellcheckEnabled || !spellDictionary) return;
+function showSpellAt(x, y, allowFallback) {
+  if (!spellcheckEnabled || !spellDictionary) return false;
   renderSpellLayer();
   const marks = Array.from(spellLayer.querySelectorAll('mark'));
   let mark = marks.find((candidate) => {
     const rect = candidate.getBoundingClientRect();
-    return event.clientX >= rect.left && event.clientX <= rect.right
-      && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
   });
-  if (!mark && marks.length) {
+  if (!mark && allowFallback && marks.length) {
     mark = marks.map((candidate) => {
       const rect = candidate.getBoundingClientRect();
-      const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
-      const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
+      const dx = Math.max(rect.left - x, 0, x - rect.right);
+      const dy = Math.max(rect.top - y, 0, y - rect.bottom);
       return { candidate, distance: dx * dx + dy * dy };
     }).sort((a, b) => a.distance - b.distance)[0].candidate;
   }
   if (mark) {
+    showSpellMenu(mark.textContent, Number(mark.dataset.start), Number(mark.dataset.end), x, y);
+    return true;
+  }
+  if (allowFallback) {
+    const fallback = firstMisspelling();
+    if (fallback) {
+      showSpellMenu(fallback.word, fallback.start, fallback.end, x, y);
+      return true;
+    }
+  }
+  return false;
+}
+
+promptEl.addEventListener('contextmenu', (event) => {
+  if (showSpellAt(event.clientX, event.clientY, true)) {
     event.preventDefault();
     event.stopPropagation();
-    showSpellMenu(mark.textContent, Number(mark.dataset.start), Number(mark.dataset.end), event.clientX, event.clientY);
-    return;
   }
-  const fallback = firstMisspelling();
-  if (fallback) {
-    event.preventDefault();
-    event.stopPropagation();
-    showSpellMenu(fallback.word, fallback.start, fallback.end, event.clientX, event.clientY);
-  } else {
-    hideSpellMenu();
-  }
+});
+promptEl.addEventListener('click', (event) => {
+  if (event.button === 0) showSpellAt(event.clientX, event.clientY, false);
 });
 document.addEventListener('click', (event) => {
   if (event.button !== 0) return;
