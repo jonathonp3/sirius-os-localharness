@@ -66,6 +66,7 @@ textarea::placeholder { color:var(--muted); opacity:1; }
 #history-toggle { background:var(--panel); color:var(--text); border:1px solid var(--border); padding:0 10px; font-size:13px; }
 #history-panel { position:fixed; top:0; left:0; bottom:0; width:350px; z-index:1000; display:flex; flex-direction:column; gap:9px; padding:14px; background:var(--panel); border-right:1px solid var(--border); box-shadow:0 12px 40px rgba(0,0,0,.35); box-sizing:border-box; }
 body.sidebar-open { padding-left:350px; }
+#history-panel[hidden] { display:none; }
 .workspace-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .workspace-head strong { font-size:15px; }
 #workspace-add { background:var(--bg); color:var(--text); border:1px solid var(--border); min-width:30px; min-height:28px; padding:0 8px; font-size:18px; line-height:1; }
@@ -74,7 +75,7 @@ body.sidebar-open { padding-left:350px; }
 .workspace-item:hover { background:var(--bg); }
 .workspace-item.active { background:var(--bg); border-color:var(--border); box-shadow:inset 3px 0 0 var(--accent); }
 .workspace-item strong { font-size:13px; font-weight:600; }
-.workspace-item span { font-size:11px; color:var(--muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.workspace-item span { font-size:12px; color:var(--muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sidebar-sep { height:1px; background:var(--border); margin:2px 0; }
 #workspace-form { display:flex; flex-direction:column; gap:5px; }
 #workspace-form[hidden] { display:none; }
@@ -262,6 +263,7 @@ let currentSessionId = null;
 let sessionList = [];
 let workspaceItems = [];
 let currentWorkspaceId = 'home';
+let sidebarVisible = false;
 let selectMode = false;
 let selectedSessions = new Set();
 const form = document.getElementById('form');
@@ -770,6 +772,7 @@ function newChat() {
 }
 
 function setSidebar(open) {
+  sidebarVisible = open;
   historyPanel.hidden = !open;
   document.body.classList.toggle('sidebar-open', open);
   if (open) {
@@ -783,7 +786,7 @@ function openHistory() {
   historySearch.focus();
 }
 
-historyToggle.addEventListener('click', () => setSidebar(historyPanel.hidden));
+historyToggle.addEventListener('click', () => setSidebar(!sidebarVisible));
 historyClose.addEventListener('click', () => setSidebar(false));
 newChatButton.addEventListener('click', newChat);
 historySearch.addEventListener('input', renderHistory);
@@ -816,15 +819,23 @@ selectCancel.addEventListener('click', () => {
 });
 exportAllButton.addEventListener('click', exportAll);
 document.addEventListener('keydown', (event) => {
-  if (event.ctrlKey && event.key.toLowerCase() === 'b') {
+  const key = event.key ? event.key.toLowerCase() : '';
+  const target = event.target;
+  const editing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+  if (event.ctrlKey && key === 'b') {
     event.preventDefault();
-    setSidebar(historyPanel.hidden);
-  } else if (event.key === 'Escape' && !historyPanel.hidden) {
+    setSidebar(!sidebarVisible);
+  } else if (event.ctrlKey && key === 'x' && !editing) {
+    event.preventDefault();
+    setSidebar(false);
+  } else if (event.key === 'Escape' && sidebarVisible) {
     setSidebar(false);
   }
 });
 
 setSidebar(false);
+refreshWorkspaces();
+refreshSessions();
 
 if (!token) setStatus('missing token in URL', true);
 
