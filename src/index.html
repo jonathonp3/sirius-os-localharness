@@ -360,26 +360,46 @@ function downloadText(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function downloadUrl(url) {
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = '';
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
+window.__harnessFileSaved = (name) => {
+  add('meta', 'saved ' + name + ' to Downloads');
+};
+
+function saveTextFile(filename, text) {
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.savefile;
+  if (bridge) {
+    bridge.postMessage(JSON.stringify({ filename, text }));
+    return;
+  }
+  downloadText(filename, text);
 }
 
-function exportSession(id) {
-  downloadUrl('/api/sessions/' + encodeURIComponent(id) + '/export?token=' + encodeURIComponent(token));
+async function exportSession(id) {
+  try {
+    const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/export?token=' + encodeURIComponent(token));
+    if (!response.ok) {
+      add('error', await response.text());
+      return;
+    }
+    saveTextFile('local-harness-' + id + '.txt', await response.text());
+  } catch (error) {
+    add('error', String(error));
+  }
 }
 
-function exportAll() {
-  const base = '/api/sessions/export?token=' + encodeURIComponent(token);
-  if (selectMode && selectedSessions.size) {
-    downloadUrl(base + '&ids=' + encodeURIComponent(Array.from(selectedSessions).join(',')));
-  } else {
-    downloadUrl(base + '&workspace=' + encodeURIComponent(currentWorkspaceId));
+async function exportAll() {
+  try {
+    const base = '/api/sessions/export?token=' + encodeURIComponent(token);
+    const url = selectMode && selectedSessions.size
+      ? base + '&ids=' + encodeURIComponent(Array.from(selectedSessions).join(','))
+      : base + '&workspace=' + encodeURIComponent(currentWorkspaceId);
+    const response = await fetch(url);
+    if (!response.ok) {
+      add('error', await response.text());
+      return;
+    }
+    saveTextFile(selectMode && selectedSessions.size ? 'local-harness-selected.txt' : 'local-harness-chats.txt', await response.text());
+  } catch (error) {
+    add('error', String(error));
   }
 }
 

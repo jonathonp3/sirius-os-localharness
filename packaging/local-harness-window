@@ -170,25 +170,25 @@ def main():
         manager.connect("script-message-received::clipboard", on_clipboard_message)
         webview = WebKit.WebView(user_content_manager=manager)
 
-        def on_download(_webview, download):
+        def on_savefile_message(_manager, value):
             try:
-                destination = download.get_destination()
-                if not destination:
-                    destination = str(
-                        Path.home() / "Downloads"
-                        / f"local-harness-export-{int(time.time())}.txt"
-                    )
-                if destination.startswith("file://"):
-                    destination = destination[7:]
-                path = Path(destination)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                download.set_allow_overwrite(True)
-                download.set_destination(str(path))
-                print(f"download: {path}", flush=True)
+                payload = json.loads(value.to_string())
+                filename = Path(str(payload.get("filename") or "local-harness-export.txt")).name
+                if not filename.lower().endswith(".txt"):
+                    filename += ".txt"
+                text = str(payload.get("text") or "")
+                downloads = Path.home() / "Downloads"
+                downloads.mkdir(parents=True, exist_ok=True)
+                path = downloads / filename
+                path.write_text(text, encoding="utf-8")
+                print(f"saved: {path}", flush=True)
+                script = "window.__harnessFileSaved(" + json.dumps(path.name) + ");"
+                webview.evaluate_javascript(script, -1, None, None, None, None, None)
             except Exception as error:
-                print(f"download failed: {error}", flush=True)
+                print(f"save failed: {error}", flush=True)
 
-        webview.connect("download-started", on_download)
+        manager.register_script_message_handler("savefile")
+        manager.connect("script-message-received::savefile", on_savefile_message)
         # The GTK context menu has no spelling dictionary; the page provides
         # its own menu (spelling + basic edit actions) via the DOM event.
         webview.connect("context-menu", lambda *args: True)
