@@ -1034,13 +1034,21 @@ function addApprovalCard(payload) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: payload.id, decision: approved }),
         });
-        if (!response.ok) add('error', await response.text());
+        if (!response.ok) {
+          add('error', await response.text());
+        } else {
+          card.remove();
+        }
       } catch (error) {
         add('error', String(error));
       }
     });
   });
-  log.appendChild(card);
+  if (openTool && openTool.parentNode === log) {
+    log.insertBefore(card, openTool);
+  } else {
+    log.appendChild(card);
+  }
   log.scrollTop = log.scrollHeight;
   setStatus('waiting for approval');
 }
