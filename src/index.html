@@ -1009,6 +1009,42 @@ function finishToolCard(card, chars, preview) {
   log.scrollTop = log.scrollHeight;
 }
 
+function addApprovalCard(payload) {
+  const card = document.createElement('div');
+  card.className = 'approval-card';
+  card.innerHTML = '<div class="approval-title">⚠ Approval required</div>'
+    + '<div class="approval-reason"></div>'
+    + '<pre><code></code></pre>'
+    + '<div class="approval-actions"><button type="button" data-decision="approve">Approve</button><button type="button" data-decision="deny">Deny</button></div>';
+  card.querySelector('.approval-reason').textContent = payload.reason || ('Approval required for ' + (payload.name || 'tool'));
+  card.querySelector('code').textContent = prettyJson(payload.arguments || '');
+  card.querySelectorAll('button').forEach((button) => {
+    button.addEventListener('click', async () => {
+      card.classList.add('resolved');
+      card.querySelectorAll('button').forEach((other) => {
+        other.disabled = true;
+        if (other !== button) other.style.display = 'none';
+      });
+      const approved = button.dataset.decision === 'approve';
+      button.textContent = approved ? 'Approved' : 'Denied';
+      setStatus(approved ? 'thinking' : 'denied');
+      try {
+        const response = await fetch('/api/approval?token=' + encodeURIComponent(token), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: payload.id, decision: approved }),
+        });
+        if (!response.ok) add('error', await response.text());
+      } catch (error) {
+        add('error', String(error));
+      }
+    });
+  });
+  log.appendChild(card);
+  log.scrollTop = log.scrollHeight;
+  setStatus('waiting for approval');
+}
+
 function handleBlock(block) {
   let event = 'message';
   let data = '';
