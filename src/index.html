@@ -172,7 +172,6 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <button id="history-toggle" type="button" title="Show or hide workspaces and chats">☰ Chats</button>
 <select id="theme" title="Theme">
 <option value="xterm">Xterm</option>
-<option value="midnight">Midnight</option>
 <option value="solarized">Solarized</option>
 <option value="golden-sand">Golden Sand</option>
 <option value="ember">Ember Orange</option>
@@ -191,7 +190,10 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <aside id="history-panel" hidden>
   <div class="workspace-head">
     <strong>Workspaces</strong>
-    <button id="workspace-add" type="button" title="Create workspace">+</button>
+    <div class="history-head-actions">
+      <button id="workspace-add" type="button" title="Create workspace">+</button>
+      <button id="sidebar-collapse" type="button" title="Collapse sidebar">«</button>
+    </div>
   </div>
   <div id="workspace-list"></div>
   <div id="workspace-form" hidden>
@@ -207,7 +209,6 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
     <strong>Chats</strong>
     <div class="history-head-actions">
       <button id="new-chat" type="button">New</button>
-      <button id="sidebar-collapse" type="button" title="Collapse sidebar">«</button>
       <button id="history-close" type="button" title="Close sidebar">×</button>
     </div>
   </div>
@@ -851,7 +852,6 @@ const themes = {
   xterm: { bg: '#000000', panel: '#101010', text: '#e5e5e5', muted: '#a0a0a0', border: '#303030', accent: '#5c9cff', scheme: 'dark', ok: '#00cd00', code: {
     bg: '#000000', text: '#e5e5e5', comment: '#808080', keyword: '#cd0000', string: '#00cd00', number: '#cdcd00', title: '#5c9cff', type: '#cdcd00', builtin: '#00cdcd', meta: '#cd00cd', attr: '#cdcd00', tag: '#00cdcd', regexp: '#cd0000', variable: '#e5e5e5', addition: '#00cd00', deletion: '#cd0000'
   } },
-  midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40', accent: '#6ea8fe', scheme: 'dark', ok: '#68d391', code: darkCode },
   solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59', accent: '#cb4b16', scheme: 'dark', ok: '#859900', code: {
     bg: '#002b36', text: '#eee8d5', comment: '#586e75', keyword: '#cb4b16', string: '#2aa198', number: '#d33682', title: '#268bd2', type: '#b58900', builtin: '#2aa198', meta: '#6c71c4', attr: '#b58900', tag: '#268bd2', regexp: '#dc322f', variable: '#eee8d5', addition: '#859900', deletion: '#dc322f'
   } },

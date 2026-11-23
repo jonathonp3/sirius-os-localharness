@@ -125,7 +125,7 @@ network. For a strict read-only-web session, use
 
 ## Chats, workspaces, export
 
-The left sidebar is hidden by default; open it with **☰ Chats** or Ctrl+B. It groups chats by workspace. `Home` uses the service workspace;
+The left sidebar is hidden by default; open it with **☰ Chats** or Ctrl+B. Use the **«** button at the top of the sidebar (or × / Ctrl+X) to collapse it. It groups chats by workspace. `Home` uses the service workspace;
 `+` creates a named workspace under the home directory (or at an explicit path,
 creating the directory if needed) and new chats in that workspace run tools
 from that directory.
@@ -350,7 +350,6 @@ The header theme selector switches background/palette presets and remembers the
 choice in `localStorage`:
 
 - **Xterm** — default; classic xterm black/ANSI palette
-- Midnight
 - **Solarized** — actual Solarized palette (orange/red/blue/green syntax)
 - **Golden Sand** — derived from `themes/solarized-light-golden-sand.xml`
   (GtkSourceView scheme): golden-sand background, dark base02 text, Solarized
