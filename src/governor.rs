@@ -215,8 +215,8 @@ impl Governor {
         if self.estimate(messages, tools) > budget {
             for message in messages.iter_mut().filter(|message| message.role == "tool") {
                 if let Some(content) = &message.content {
-                    if content.chars().count() > 4_000 {
-                        message.content = Some(truncate_chars(content, 4_000));
+                    if content.chars().count() > 12_000 {
+                        message.content = Some(truncate_chars(content, 12_000));
                         report.truncated_tools += 1;
                     }
                 }
