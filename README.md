@@ -232,6 +232,35 @@ Plugins are sandboxed with `bwrap` by default: read-only `/usr` and `/etc`, the
 workspace read-write, **no network**, and an isolated PID namespace. Set
 `"sandbox": false` on a plugin only when it genuinely needs the host.
 
+### PhotoCraft MCP
+
+The PhotoCraft integration is an MCP stdio server, not a custom plugin. Start
+the PhotoCraft automation server first:
+
+```bash
+setsid flatpak run --command=photocraft ai.storyteller.photocraft \
+  --control 38086 --automation-read-root "$HOME" --automation-write-root "$HOME" \
+  </dev/null >/tmp/pc-control.log 2>&1 &
+```
+
+Then use `~/.harness/mcp.json`:
+
+```json
+{
+  "servers": [
+    {
+      "name": "photocraft",
+      "command": "/usr/bin/flatpak-spawn",
+      "args": ["--host", "/var/home/jonathon/.local/bin/photocraft-mcp-auto"]
+    }
+  ]
+}
+```
+
+Restart Local Harness after PhotoCraft is running. Tools are exposed as
+`mcp__photocraft__<tool>`. MCP startup failures are logged and skipped, so a
+removed PhotoCraft automation server does not stop the harness.
+
 MCP stdio servers work through the same seam:
 
 ```bash

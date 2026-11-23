@@ -88,11 +88,13 @@ pub async fn load(path: &Path) -> Result<Vec<Arc<McpServer>>> {
             ),
             _ => {}
         }
-        let started = Arc::new(
-            McpServer::start(server.clone())
-                .await
-                .with_context(|| format!("starting MCP server `{}`", server.name))?,
-        );
+        let started = match McpServer::start(server.clone()).await {
+            Ok(started) => Arc::new(started),
+            Err(error) => {
+                eprintln!("MCP server `{}` unavailable: {error:#}", server.name);
+                continue;
+            }
+        };
         for tool in &started.tools {
             if !call_names.insert(tool.call_name.clone()) {
                 bail!("duplicate MCP tool name `{}`", tool.call_name);
