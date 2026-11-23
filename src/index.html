@@ -464,7 +464,7 @@ function addUserMessage(text) {
   copy.title = 'Copy this prompt';
   copy.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeClipboard(text);
       copy.textContent = 'copied';
       setTimeout(() => { copy.textContent = 'copy'; }, 1200);
     } catch (error) {
@@ -1688,6 +1688,109 @@ function showContextMenu(x, y, spelling) {
   spellMenuOpenedAt = Date.now();
 }
 
+function positionSpellMenu(x, y) {
+  spellMenu.removeAttribute('hidden');
+  spellMenu.style.position = 'fixed';
+  spellMenu.style.display = 'block';
+  spellMenu.style.visibility = 'visible';
+  spellMenu.style.opacity = '1';
+  spellMenu.style.zIndex = '10000';
+  const width = spellMenu.offsetWidth || 220;
+  const height = spellMenu.offsetHeight || 300;
+  spellMenu.style.left = Math.max(8, Math.min(x, window.innerWidth - width - 8)) + 'px';
+  spellMenu.style.top = Math.max(8, Math.min(y, window.innerHeight - height - 8)) + 'px';
+  spellMenuOpenedAt = Date.now();
+}
+
+function fieldSelection(field) {
+  if (field.value !== undefined && field.selectionStart !== null && field.selectionStart !== undefined) {
+    return { start: field.selectionStart, end: field.selectionEnd, text: field.value.slice(field.selectionStart, field.selectionEnd) };
+  }
+  const selection = window.getSelection();
+  return { start: null, end: null, text: selection ? selection.toString() : '' };
+}
+
+function insertIntoField(field, text) {
+  field.focus();
+  if (field.value !== undefined && field.setRangeText && field.selectionStart !== null && field.selectionStart !== undefined) {
+    field.setRangeText(text, field.selectionStart, field.selectionEnd, 'end');
+  } else {
+    document.execCommand('insertText', false, text);
+  }
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function showFieldContextMenu(field, x, y) {
+  if (!spellMenu) return;
+  if (spellMenu.parentElement !== document.body) document.body.appendChild(spellMenu);
+  spellMenu.innerHTML = '';
+  const selection = fieldSelection(field);
+  const hasSelection = selection.text.length > 0;
+  const canPaste = Boolean(clipboardBridge() || (navigator.clipboard && (navigator.clipboard.readText || navigator.clipboard.read)));
+  menuButton('Cut', async () => {
+    if (await writeClipboard(selection.text)) {
+      if (field.value !== undefined && field.setRangeText) {
+        field.setRangeText('', selection.start, selection.end, 'end');
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        document.execCommand('delete');
+      }
+      field.focus();
+    }
+  }, !hasSelection);
+  menuButton('Copy', () => writeClipboard(selection.text), !hasSelection);
+  menuButton('Paste', async () => {
+    const text = await readClipboardText();
+    if (text !== null) insertIntoField(field, text);
+  }, !canPaste);
+  menuButton('Delete', () => {
+    if (field.value !== undefined && field.setRangeText) {
+      field.setRangeText('', selection.start, selection.end, 'end');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+      document.execCommand('delete');
+    }
+    field.focus();
+  }, !hasSelection);
+  menuSeparator();
+  menuButton('Select all', () => {
+    field.focus();
+    if (field.select) field.select();
+    else document.execCommand('selectAll');
+  });
+  positionSpellMenu(x, y);
+}
+
+function showReadOnlyContextMenu(x, y, target) {
+  if (!spellMenu) return;
+  if (spellMenu.parentElement !== document.body) document.body.appendChild(spellMenu);
+  spellMenu.innerHTML = '';
+  const selection = window.getSelection();
+  const selected = selection ? selection.toString() : '';
+  const block = target.closest('pre, .tool-card, .assistant, .user, .meta, .mcp-tool, .mcp-server, .model-item, .workspace-item, .history-item, .catalog-item');
+  if (selected.trim()) {
+    menuButton('Copy', () => writeClipboard(selected));
+  }
+  if (block) {
+    menuButton('Copy block', () => writeClipboard(block.innerText || block.textContent || ''));
+  }
+  if (!selected.trim() && !block) {
+    menuButton('Copy', () => {}, true);
+  }
+  menuSeparator();
+  menuButton('Select all', () => {
+    if (block) {
+      const range = document.createRange();
+      range.selectNodeContents(block);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      selection.selectAllChildren(log);
+    }
+  });
+  positionSpellMenu(x, y);
+}
+
 function firstMisspelling() {
   const text = promptEl.value;
   const pattern = /[A-Za-z][A-Za-z'’-]*/g;
@@ -1752,6 +1855,16 @@ promptEl.addEventListener('click', (event) => {
     if (spelling) showContextMenu(event.clientX, event.clientY, spelling);
   } catch (error) {
     console.error('spell menu failed', error);
+  }
+});
+document.addEventListener('contextmenu', (event) => {
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  const field = event.target.closest('input, textarea, [contenteditable="true"]');
+  if (field) {
+    showFieldContextMenu(field, event.clientX, event.clientY);
+  } else {
+    showReadOnlyContextMenu(event.clientX, event.clientY, event.target);
   }
 });
 document.addEventListener('mousedown', (event) => {
@@ -1827,7 +1940,7 @@ function enhanceAssistant(element) {
     button.textContent = 'copy';
     button.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(pre.querySelector('code')?.innerText || pre.innerText);
+        await writeClipboard(pre.querySelector('code')?.innerText || pre.innerText);
         button.textContent = 'copied';
         setTimeout(() => { button.textContent = 'copy'; }, 1200);
       } catch (error) {
@@ -1850,7 +1963,7 @@ function copyButton(label, getValue, title) {
   if (title) button.title = title;
   button.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(getValue());
+      await writeClipboard(getValue());
       button.textContent = 'copied';
       setTimeout(() => { button.textContent = label; }, 1200);
     } catch (error) {
