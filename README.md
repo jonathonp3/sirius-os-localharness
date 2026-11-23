@@ -123,6 +123,22 @@ The shell is separate: with `--tool-policy full`, `bash` can still reach the
 network. For a strict read-only-web session, use
 `--tool-policy read-only --allow-web`.
 
+## Chats, workspaces, export
+
+The left sidebar groups chats by workspace. `Home` uses the service workspace;
+`+` creates a named workspace under the home directory (or at an explicit path)
+and new chats in that workspace run tools from that directory.
+
+The sidebar also supports:
+
+- search, pin, rename, and per-chat delete
+- **Select** mode with Select all / Delete selected (soft-delete to `sessions/trash`)
+- **Export** per chat, or all/selected chats as a `.txt` transcript
+- a **copy** button on each user prompt, including the active prompt bubble
+
+Bulk selection applies to the currently selected workspace. Existing chats
+without workspace metadata are grouped under `Home`.
+
 ## Model registry and presets
 
 Profiles live in `~/.config/local-harness/models.json` (or `--registry`).

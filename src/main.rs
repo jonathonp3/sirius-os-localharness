@@ -11,6 +11,7 @@ mod server;
 mod session;
 mod tools;
 mod web;
+mod workspaces;
 mod workflow;
 
 use std::io::Write as _;

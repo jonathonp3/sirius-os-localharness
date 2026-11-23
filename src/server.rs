@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use anyhow::{Context, Result};
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode, header::AUTHORIZATION};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header::{AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_TYPE}};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -23,6 +23,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use crate::agent::{self, EventSink};
 use crate::approval::{self, ApprovalRequest, Approver};
 use crate::session::{self, Session};
+use crate::workspaces;
 
 const INDEX: &str = include_str!("index.html");
 const MARKDOWN_JS: &str = include_str!("assets/markdown-it.min.js");
@@ -79,6 +80,9 @@ pub async fn run(
         .route("/api/health", get(health))
         .route("/api/models", get(models))
         .route("/api/sessions", get(list_sessions))
+        .route("/api/sessions/export", get(export_sessions))
+        .route("/api/sessions/{id}/export", get(export_session))
+        .route("/api/workspaces", get(list_workspaces).post(create_workspace))
         .route(
             "/api/sessions/{id}",
             get(get_session).patch(patch_session).delete(delete_session),
@@ -165,6 +169,157 @@ async fn models(
             (StatusCode::BAD_GATEWAY, format!("model server unreachable: {error}")).into_response()
         }
     }
+}
+
+async fn list_workspaces(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    match workspaces::list(&state.data_dir, &state.config.workspace).await {
+        Ok(items) => Json(json!({ "workspaces": items })).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
+}
+
+async fn create_workspace(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<WorkspaceBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    match workspaces::create(
+        &state.data_dir,
+        &state.config.workspace,
+        &body.name,
+        &body.path,
+    )
+    .await
+    {
+        Ok(workspace) => Json(json!({ "workspace": workspace })).into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
+}
+
+async fn export_text(data_dir: &std::path::Path, session: &Session) -> Result<String> {
+    let index = session::SessionIndex::load(data_dir).await?;
+    let summary = session.summary(data_dir, &index).await?;
+    let messages = session.load_messages().await?;
+    let mut out = format!(
+        "=== {} ({}) ===\nModel: {}\nWorkspace: {} ({})\nCreated: {}\nUpdated: {}\n\n",
+        summary.title,
+        summary.id,
+        summary.model,
+        summary.workspace_name,
+        summary.workspace,
+        summary.created_at,
+        summary.updated_at,
+    );
+    for message in messages {
+        if message.role == "system" {
+            continue;
+        }
+        let content = message.content.unwrap_or_default();
+        match message.role.as_str() {
+            "user" => out.push_str(&format!("--- user ---\n{content}\n\n")),
+            "assistant" => {
+                out.push_str(&format!("--- assistant ---\n{content}\n\n"));
+                if let Some(calls) = message.tool_calls {
+                    for call in calls {
+                        out.push_str(&format!(
+                            "[tool call] {} {}\n",
+                            call.function.name, call.function.arguments
+                        ));
+                    }
+                    out.push('\n');
+                }
+            }
+            "tool" => out.push_str(&format!("--- tool result ---\n{content}\n\n")),
+            other => out.push_str(&format!("--- {other} ---\n{content}\n\n")),
+        }
+    }
+    Ok(out)
+}
+
+fn text_download(text: String, filename: &str) -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
+    let disposition = format!("attachment; filename=\"{filename}\"");
+    if let Ok(value) = HeaderValue::from_str(&disposition) {
+        headers.insert(CONTENT_DISPOSITION, value);
+    }
+    (headers, text).into_response()
+}
+
+async fn export_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let session = match Session::open(&state.data_dir, &id).await {
+        Ok(session) => session,
+        Err(error) => return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    };
+    match export_text(&state.data_dir, &session).await {
+        Ok(text) => text_download(text, &format!("local-harness-{}.txt", session.id)),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
+}
+
+async fn export_sessions(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ExportQuery>,
+    headers: HeaderMap,
+) -> Response {
+    let ExportQuery { token, workspace } = query;
+    let auth = AuthQuery { token };
+    if !authorized(&state, &auth, &headers) {
+        return unauthorized();
+    }
+    let (sessions, _) = match session::list_sessions(&state.data_dir).await {
+        Ok(sessions) => sessions,
+        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    };
+    let mut output = String::new();
+    for summary in sessions {
+        if let Some(workspace) = &workspace {
+            if &summary.workspace != workspace {
+                continue;
+            }
+        }
+        let Ok(session) = Session::open(&state.data_dir, &summary.id).await else { continue };
+        if let Ok(text) = export_text(&state.data_dir, &session).await {
+            output.push_str(&text);
+            output.push_str("\n\n");
+        }
+    }
+    if output.is_empty() {
+        output.push_str("No chats to export.\n");
+    }
+    text_download(output, "local-harness-chats.txt")
+}
+
+#[derive(Deserialize)]
+struct WorkspaceBody {
+    name: String,
+    #[serde(default)]
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct ExportQuery {
+    token: Option<String>,
+    workspace: Option<String>,
 }
 
 async fn list_sessions(
@@ -338,7 +493,7 @@ async fn chat(
             eprintln!("[chat] cancelled while queued");
             return;
         }
-        let (session, history) = match body.session.as_deref() {
+        let (session, history, workspace_path) = match body.session.as_deref() {
             Some(id) => {
                 let session = match Session::open(&task_state.data_dir, id).await {
                     Ok(session) => session,
@@ -354,15 +509,51 @@ async fn chat(
                         return;
                     }
                 };
-                (session, history)
+                let workspace = match session.workspace().await {
+                    Ok(workspace) => workspace,
+                    Err(error) => {
+                        let _ = tx.send(SseEvent::Error { message: format!("{error:#}") });
+                        return;
+                    }
+                };
+                (session, history, workspace.map(|workspace| workspace.path))
             }
-            None => match Session::create(&task_state.data_dir, &task_state.config.model).await {
-                Ok(session) => (session, Vec::new()),
-                Err(error) => {
+            None => {
+                let workspace = match body.workspace.as_deref() {
+                    Some(id) => match workspaces::get(&task_state.data_dir, &task_state.config.workspace, id).await {
+                        Ok(Some(workspace)) => workspace,
+                        Ok(None) => {
+                            let _ = tx.send(SseEvent::Error { message: format!("unknown workspace: {id}") });
+                            return;
+                        }
+                        Err(error) => {
+                            let _ = tx.send(SseEvent::Error { message: format!("{error:#}") });
+                            return;
+                        }
+                    },
+                    None => workspaces::home_workspace(&task_state.config.workspace),
+                };
+                let session = match Session::create(&task_state.data_dir, &task_state.config.model).await {
+                    Ok(session) => session,
+                    Err(error) => {
+                        let _ = tx.send(SseEvent::Error { message: format!("{error:#}") });
+                        return;
+                    }
+                };
+                if let Err(error) = session
+                    .append(json!({
+                        "type": "workspace",
+                        "id": workspace.id,
+                        "name": workspace.name,
+                        "path": workspace.path,
+                    }))
+                    .await
+                {
                     let _ = tx.send(SseEvent::Error { message: format!("{error:#}") });
                     return;
                 }
-            },
+                (session, Vec::new(), Some(workspace.path))
+            }
         };
         let _active = match ActiveSession::acquire(task_state.active_sessions.clone(), &session.id) {
             Some(active) => active,
@@ -374,6 +565,13 @@ async fn chat(
             }
         };
         let mut config = task_state.config.clone();
+        if let Some(path) = workspace_path {
+            if !std::path::Path::new(&path).is_dir() {
+                let _ = tx.send(SseEvent::Error { message: format!("workspace is not a directory: {path}") });
+                return;
+            }
+            config.workspace = PathBuf::from(path);
+        }
         config.cancel = Some(task_cancel.clone());
         config.approver = if task_state.auto_approve {
             approval::auto()
@@ -492,6 +690,8 @@ struct ChatBody {
     prompt: String,
     #[serde(default)]
     session: Option<String>,
+    #[serde(default)]
+    workspace: Option<String>,
 }
 
 #[derive(Deserialize)]

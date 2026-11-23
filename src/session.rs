@@ -130,6 +130,15 @@ pub struct SessionSummary {
     pub updated_at: u64,
     pub pinned: bool,
     pub message_count: usize,
+    pub workspace: String,
+    pub workspace_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionWorkspace {
+    pub id: String,
+    pub name: String,
+    pub path: String,
 }
 
 impl SessionIndex {
@@ -166,6 +175,8 @@ impl Session {
         let mut created_at = 0u64;
         let mut message_count = 0usize;
         let mut first_user: Option<String> = None;
+        let mut workspace = "home".to_string();
+        let mut workspace_name = "Home".to_string();
         for line in text.lines() {
             let value: Value = match serde_json::from_str(line) {
                 Ok(value) => value,
@@ -178,6 +189,14 @@ impl Session {
                     }
                     if let Some(value) = value.get("created_at").and_then(Value::as_str) {
                         created_at = value.parse().unwrap_or(0);
+                    }
+                }
+                Some("workspace") => {
+                    if let Some(value) = value.get("id").and_then(Value::as_str) {
+                        workspace = value.to_string();
+                    }
+                    if let Some(value) = value.get("name").and_then(Value::as_str) {
+                        workspace_name = value.to_string();
                     }
                 }
                 Some("message") => {
@@ -238,7 +257,28 @@ impl Session {
             updated_at: modified,
             pinned: meta.map(|meta| meta.pinned).unwrap_or(false),
             message_count,
+            workspace,
+            workspace_name,
         })
+    }
+
+    pub async fn workspace(&self) -> Result<Option<SessionWorkspace>> {
+        let text = tokio::fs::read_to_string(&self.file).await?;
+        for line in text.lines() {
+            let Ok(value) = serde_json::from_str::<Value>(line) else { continue };
+            if value.get("type").and_then(Value::as_str) != Some("workspace") {
+                continue;
+            }
+            let id = value.get("id").and_then(Value::as_str).unwrap_or("home");
+            let name = value.get("name").and_then(Value::as_str).unwrap_or("Home");
+            let path = value.get("path").and_then(Value::as_str).unwrap_or("");
+            return Ok(Some(SessionWorkspace {
+                id: id.to_string(),
+                name: name.to_string(),
+                path: path.to_string(),
+            }));
+        }
+        Ok(None)
     }
 
     pub async fn trash(&self, data_dir: &Path) -> Result<()> {

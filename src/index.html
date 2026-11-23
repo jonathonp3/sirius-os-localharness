@@ -8,14 +8,16 @@
 :root { color-scheme: dark; --bg:#111; --panel:#1a1a1a; --text:#e8e8e8; --muted:#9a9a9a; --accent:#6ea8fe; --border:#2a2a2a;
 --code-bg:#0d0d0d; --code-text:#e6e6e6; --code-comment:#8b949e; --code-keyword:#ff7b72; --code-string:#a5d6ff; --code-number:#79c0ff; --code-title:#d2a8ff; --code-type:#ffa657; --code-builtin:#79c0ff; --code-meta:#d2a8ff; --code-attr:#79c0ff; --code-tag:#7ee787; --code-regexp:#ffa657; --code-variable:#ffa657; --code-addition:#aff5b4; --code-deletion:#ffdcd7; --ok:#68d391; }
 * { box-sizing: border-box; }
-body { margin:0; font:15px/1.5 ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+body { margin:0; box-sizing:border-box; font:15px/1.5 ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
 header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; }
 header h1 { font-size:14px; font-weight:600; margin:0; }
 #status { color:var(--muted); font-size:14px; margin-left:auto; }
 #status.error { color:#ff6b6b; }
 #log { flex:1; min-height:0; overflow:auto; padding:18px; display:flex; flex-direction:column; gap:10px; }
 .bubble { max-width:min(760px, 92%); padding:10px 12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
-.user { align-self:flex-end; background:var(--panel); border:1px solid var(--border); color:var(--text); font-size:17px; }
+.user { align-self:flex-end; background:var(--panel); border:1px solid var(--border); color:var(--text); font-size:17px; position:relative; padding-right:58px; }
+.bubble-copy { position:absolute; top:4px; right:5px; background:var(--bg); color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:11px; padding:1px 5px; cursor:pointer; }
+.bubble-copy:hover { color:var(--text); }
 .assistant { align-self:flex-start; background:var(--panel); border:1px solid var(--border); white-space:normal; }
 .tool { align-self:flex-start; font:12px ui-monospace, monospace; color:var(--muted); background:#151515; border:1px dashed var(--border); padding:4px 8px; border-radius:6px; max-width:92%; white-space:pre-wrap; }
 .meta { align-self:flex-start; color:var(--muted); font-size:14px; }
@@ -62,8 +64,32 @@ textarea::placeholder { color:var(--muted); opacity:1; }
 #spell.active { background:var(--accent); color:#08111f; }
 
 #history-toggle { background:var(--panel); color:var(--text); border:1px solid var(--border); padding:0 10px; font-size:13px; }
-#history-panel { position:fixed; top:0; left:0; bottom:0; width:min(350px, 92vw); z-index:1000; display:flex; flex-direction:column; gap:10px; padding:14px; background:var(--panel); border-right:1px solid var(--border); box-shadow:0 12px 40px rgba(0,0,0,.35); }
-#history-panel[hidden] { display:none; }
+#history-panel { position:fixed; top:0; left:0; bottom:0; width:350px; z-index:1000; display:flex; flex-direction:column; gap:9px; padding:14px; background:var(--panel); border-right:1px solid var(--border); box-shadow:0 12px 40px rgba(0,0,0,.35); box-sizing:border-box; }
+body.sidebar-open { padding-left:350px; }
+.workspace-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.workspace-head strong { font-size:15px; }
+#workspace-add { background:var(--bg); color:var(--text); border:1px solid var(--border); min-width:30px; min-height:28px; padding:0 8px; font-size:18px; line-height:1; }
+#workspace-list { display:flex; flex-direction:column; gap:2px; max-height:190px; overflow:auto; }
+.workspace-item { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; text-align:left; background:none; color:var(--text); border:1px solid transparent; border-radius:6px; padding:6px 7px; font:inherit; cursor:pointer; }
+.workspace-item:hover { background:var(--bg); }
+.workspace-item.active { background:var(--bg); border-color:var(--border); box-shadow:inset 3px 0 0 var(--accent); }
+.workspace-item strong { font-size:13px; font-weight:600; }
+.workspace-item span { font-size:11px; color:var(--muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sidebar-sep { height:1px; background:var(--border); margin:2px 0; }
+#workspace-form { display:flex; flex-direction:column; gap:5px; }
+#workspace-form[hidden] { display:none; }
+#workspace-form input { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:5px 7px; font:inherit; font-size:12px; }
+.workspace-form-actions { display:flex; gap:5px; }
+.workspace-form-actions button, .history-tools button, #history-select-bar button { background:var(--bg); color:var(--text); border:1px solid var(--border); min-height:28px; min-width:0; padding:0 8px; font-size:12px; }
+.history-tools { display:flex; gap:5px; }
+.history-tools button { flex:1; }
+#history-select-bar { display:flex; flex-wrap:wrap; gap:5px; }
+#history-select-bar[hidden] { display:none; }
+#delete-selected { border-color:#8a3a3a; color:#d66; }
+@media (max-width:760px) {
+  body.sidebar-open { padding-left:0; }
+  #history-panel { width:min(350px,92vw); }
+}
 .history-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .history-head strong { font-size:16px; }
 .history-head-actions { display:flex; gap:6px; }
@@ -72,11 +98,12 @@ textarea::placeholder { color:var(--muted); opacity:1; }
 #history-search { width:100%; box-sizing:border-box; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:7px 9px; font:inherit; font-size:13px; }
 #history-search::placeholder { color:var(--muted); opacity:1; }
 #history-list { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:2px; }
-.history-item { border-bottom:1px solid var(--border); padding:7px 4px 7px 6px; border-radius:6px; }
+.history-item { position:relative; border-bottom:1px solid var(--border); padding:7px 4px 7px 6px; border-radius:6px; }
 .history-item:hover { background:var(--bg); }
 .history-item.active { background:var(--bg); box-shadow:inset 3px 0 0 var(--accent); }
 .history-title { display:block; width:100%; text-align:left; background:none; color:var(--text); border:0; padding:0; font:inherit; font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
 .history-meta { color:var(--muted); font-size:12px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.history-check { float:left; margin:5px 7px 0 0; }
 .history-actions { display:flex; gap:4px; margin-top:5px; }
 .history-actions button { background:none; color:var(--muted); border:1px solid transparent; padding:0 5px; min-height:24px; min-width:0; font-size:13px; line-height:1; }
 .history-actions button:hover { color:var(--text); border-color:var(--border); background:var(--panel); }
@@ -139,7 +166,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 </style>
 <link rel="stylesheet" href="/assets/highlight.css">
 </head>
-<body>
+<body class="sidebar-open">
 <header><h1>Local Harness</h1>
 <button id="history-toggle" type="button" title="Chat history">History</button>
 <select id="theme" title="Theme">
@@ -157,15 +184,38 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <option value="1.5">150%</option>
 </select>
 <span id="status">ready</span></header>
-<aside id="history-panel" hidden>
+<aside id="history-panel">
+  <div class="workspace-head">
+    <strong>Workspaces</strong>
+    <button id="workspace-add" type="button" title="Create workspace">+</button>
+  </div>
+  <div id="workspace-list"></div>
+  <div id="workspace-form" hidden>
+    <input id="workspace-name" type="text" placeholder="Workspace name" autocomplete="off">
+    <input id="workspace-path" type="text" placeholder="Path (optional; created if blank)" autocomplete="off">
+    <div class="workspace-form-actions">
+      <button id="workspace-create" type="button">Create</button>
+      <button id="workspace-cancel" type="button">Cancel</button>
+    </div>
+  </div>
+  <div class="sidebar-sep"></div>
   <div class="history-head">
     <strong>Chats</strong>
     <div class="history-head-actions">
       <button id="new-chat" type="button">New</button>
-      <button id="history-close" type="button" title="Close history">×</button>
+      <button id="history-close" type="button" title="Close sidebar">×</button>
     </div>
   </div>
   <input id="history-search" type="search" placeholder="Search chats…" autocomplete="off">
+  <div class="history-tools">
+    <button id="select-toggle" type="button">Select</button>
+    <button id="export-all" type="button">Export</button>
+  </div>
+  <div id="history-select-bar" hidden>
+    <button id="select-all" type="button">Select all</button>
+    <button id="delete-selected" type="button">Delete selected</button>
+    <button id="select-cancel" type="button">Cancel</button>
+  </div>
   <div id="history-list"></div>
 </aside>
 <main id="log"></main>
@@ -195,8 +245,25 @@ const historyClose = document.getElementById('history-close');
 const historySearch = document.getElementById('history-search');
 const historyList = document.getElementById('history-list');
 const newChatButton = document.getElementById('new-chat');
+const workspaceAdd = document.getElementById('workspace-add');
+const workspaceList = document.getElementById('workspace-list');
+const workspaceForm = document.getElementById('workspace-form');
+const workspaceName = document.getElementById('workspace-name');
+const workspacePath = document.getElementById('workspace-path');
+const workspaceCreate = document.getElementById('workspace-create');
+const workspaceCancel = document.getElementById('workspace-cancel');
+const selectToggle = document.getElementById('select-toggle');
+const historySelectBar = document.getElementById('history-select-bar');
+const selectAllButton = document.getElementById('select-all');
+const deleteSelectedButton = document.getElementById('delete-selected');
+const selectCancel = document.getElementById('select-cancel');
+const exportAllButton = document.getElementById('export-all');
 let currentSessionId = null;
 let sessionList = [];
+let workspaceItems = [];
+let currentWorkspaceId = 'home';
+let selectMode = false;
+let selectedSessions = new Set();
 const form = document.getElementById('form');
 const promptEl = document.getElementById('prompt');
 const sendEl = document.getElementById('send');
@@ -250,20 +317,174 @@ async function refreshSessions() {
   }
 }
 
-function renderHistory() {
-  if (!historyList) return;
+function visibleSessions() {
   const query = (historySearch.value || '').trim().toLowerCase();
-  const filtered = sessionList.filter((session) => {
+  return sessionList.filter((session) => {
+    if ((session.workspace || 'home') !== currentWorkspaceId) return false;
     if (!query) return true;
     return (session.title || '').toLowerCase().includes(query)
       || (session.model || '').toLowerCase().includes(query)
       || (session.id || '').toLowerCase().includes(query);
   });
+}
+
+function addUserMessage(text) {
+  const element = add('user', text);
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'bubble-copy';
+  copy.textContent = 'copy';
+  copy.title = 'Copy this prompt';
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      copy.textContent = 'copied';
+      setTimeout(() => { copy.textContent = 'copy'; }, 1200);
+    } catch (error) {
+      copy.textContent = 'failed';
+    }
+  });
+  element.appendChild(copy);
+  return element;
+}
+
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+async function exportSession(id) {
+  try {
+    const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/export?token=' + encodeURIComponent(token));
+    if (!response.ok) {
+      add('error', await response.text());
+      return;
+    }
+    downloadText('local-harness-' + id + '.txt', await response.text());
+  } catch (error) {
+    add('error', String(error));
+  }
+}
+
+async function exportAll() {
+  try {
+    if (selectMode && selectedSessions.size) {
+      const parts = [];
+      for (const id of selectedSessions) {
+        const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/export?token=' + encodeURIComponent(token));
+        if (response.ok) parts.push(await response.text());
+      }
+      downloadText('local-harness-selected.txt', parts.join('\n\n') || 'No chats selected.\n');
+      return;
+    }
+    const response = await fetch('/api/sessions/export?token=' + encodeURIComponent(token) + '&workspace=' + encodeURIComponent(currentWorkspaceId));
+    if (!response.ok) {
+      add('error', await response.text());
+      return;
+    }
+    downloadText('local-harness-chats.txt', await response.text());
+  } catch (error) {
+    add('error', String(error));
+  }
+}
+
+async function refreshWorkspaces() {
+  if (!token) return;
+  try {
+    const response = await fetch('/api/workspaces?token=' + encodeURIComponent(token));
+    if (!response.ok) {
+      add('error', await response.text());
+      return;
+    }
+    const data = await response.json();
+    workspaceItems = data.workspaces || [];
+    if (!workspaceItems.some((workspace) => workspace.id === currentWorkspaceId)) {
+      currentWorkspaceId = 'home';
+    }
+    renderWorkspaces();
+  } catch (error) {
+    add('error', String(error));
+  }
+}
+
+function currentWorkspace() {
+  return workspaceItems.find((workspace) => workspace.id === currentWorkspaceId)
+    || { id: 'home', name: 'Home', path: '' };
+}
+
+function renderWorkspaces() {
+  workspaceList.innerHTML = '';
+  for (const workspace of workspaceItems) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'workspace-item' + (workspace.id === currentWorkspaceId ? ' active' : '');
+    const name = document.createElement('strong');
+    name.textContent = workspace.name || workspace.id;
+    const path = document.createElement('span');
+    path.textContent = workspace.path || '';
+    item.append(name, path);
+    item.addEventListener('click', () => selectWorkspace(workspace.id));
+    workspaceList.appendChild(item);
+  }
+}
+
+function selectWorkspace(id) {
+  if (controller) {
+    add('meta', 'stop the running response before switching workspaces');
+    return;
+  }
+  currentWorkspaceId = id;
+  currentSessionId = null;
+  log.innerHTML = '';
+  add('meta', 'workspace · ' + currentWorkspace().name);
+  setStatus('ready');
+  renderWorkspaces();
+  refreshSessions();
+  promptEl.focus();
+}
+
+async function createWorkspace() {
+  const name = workspaceName.value.trim();
+  if (!name) {
+    add('error', 'workspace name is required');
+    return;
+  }
+  try {
+    const response = await fetch('/api/workspaces?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, path: workspacePath.value.trim() }),
+    });
+    if (!response.ok) {
+      add('error', await response.text());
+      return;
+    }
+    const data = await response.json();
+    workspaceForm.hidden = true;
+    workspaceName.value = '';
+    workspacePath.value = '';
+    await refreshWorkspaces();
+    selectWorkspace(data.workspace.id);
+  } catch (error) {
+    add('error', String(error));
+  }
+}
+
+function renderHistory() {
+  if (!historyList) return;
+  const filtered = visibleSessions();
   historyList.innerHTML = '';
   if (!filtered.length) {
     const empty = document.createElement('div');
     empty.className = 'history-empty';
-    empty.textContent = sessionList.length ? 'No matching chats' : 'No saved chats yet';
+    empty.textContent = sessionList.length ? 'No chats in this workspace' : 'No saved chats yet';
     historyList.appendChild(empty);
     return;
   }
@@ -271,12 +492,32 @@ function renderHistory() {
     const item = document.createElement('div');
     item.className = 'history-item' + (session.id === currentSessionId ? ' active' : '');
 
+    let check = null;
+    if (selectMode) {
+      check = document.createElement('input');
+      check.type = 'checkbox';
+      check.className = 'history-check';
+      check.checked = selectedSessions.has(session.id);
+      check.addEventListener('change', () => {
+        if (check.checked) selectedSessions.add(session.id);
+        else selectedSessions.delete(session.id);
+      });
+      item.appendChild(check);
+    }
+
     const title = document.createElement('button');
     title.type = 'button';
     title.className = 'history-title';
     title.textContent = session.title || 'New chat';
     title.title = session.title || 'New chat';
-    title.addEventListener('click', () => loadSession(session.id));
+    title.addEventListener('click', () => {
+      if (selectMode && check) {
+        check.checked = !check.checked;
+        check.dispatchEvent(new Event('change'));
+      } else {
+        loadSession(session.id);
+      }
+    });
 
     const meta = document.createElement('div');
     meta.className = 'history-meta';
@@ -300,13 +541,19 @@ function renderHistory() {
     rename.textContent = '✎';
     rename.addEventListener('click', () => startRename(item, session));
 
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button';
+    exportButton.title = 'Export chat as text';
+    exportButton.textContent = '⤓';
+    exportButton.addEventListener('click', () => exportSession(session.id));
+
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.title = 'Delete chat';
     remove.textContent = '🗑';
     remove.addEventListener('click', () => deleteSession(session.id));
 
-    actions.append(pin, rename, remove);
+    actions.append(pin, rename, exportButton, remove);
     item.append(title, meta, actions);
     historyList.appendChild(item);
   }
@@ -355,6 +602,33 @@ async function deleteSession(id) {
   }
 }
 
+async function deleteSelected() {
+  if (!selectedSessions.size) return;
+  if (!confirm('Delete ' + selectedSessions.size + ' selected chat(s)? They will be moved to the session trash.')) return;
+  const ids = Array.from(selectedSessions);
+  const failed = [];
+  for (const id of ids) {
+    try {
+      const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '?token=' + encodeURIComponent(token), { method: 'DELETE' });
+      if (!response.ok) failed.push(id);
+    } catch (error) {
+      failed.push(id);
+    }
+  }
+  if (ids.includes(currentSessionId)) {
+    currentSessionId = null;
+    log.innerHTML = '';
+    add('meta', 'new chat');
+    setStatus('ready');
+  }
+  selectedSessions.clear();
+  selectMode = false;
+  selectToggle.textContent = 'Select';
+  historySelectBar.hidden = true;
+  if (failed.length) add('error', failed.length + ' chat(s) could not be deleted (running or missing).');
+  await refreshSessions();
+}
+
 function startRename(item, session) {
   const title = item.querySelector('.history-title');
   if (!title) return;
@@ -390,7 +664,7 @@ function startRename(item, session) {
 function appendHistoryMessage(message) {
   if (!message || !message.role) return;
   if (message.role === 'user' && message.content) {
-    add('user', message.content);
+    addUserMessage(message.content);
   } else if (message.role === 'assistant') {
     if (message.content) {
       const element = add('assistant');
@@ -427,13 +701,15 @@ async function loadSession(id) {
     const data = await response.json();
     log.innerHTML = '';
     currentSessionId = id;
+    currentWorkspaceId = data.session.workspace || 'home';
     assistantEl = null;
     openTool = null;
     finished = true;
     for (const message of data.messages || []) appendHistoryMessage(message);
     add('meta', 'loaded ' + (data.session.title || id) + ' · ' + (data.session.model || 'unknown model'));
     setStatus('ready');
-    historyPanel.hidden = true;
+    renderWorkspaces();
+    refreshSessions();
     promptEl.focus();
     log.scrollTop = log.scrollHeight;
   } catch (error) {
@@ -454,27 +730,63 @@ function newChat() {
   sendEl.disabled = false;
   stopEl.disabled = true;
   setStatus('ready');
-  add('meta', 'new chat');
-  historyPanel.hidden = true;
+  add('meta', 'new chat · ' + currentWorkspace().name);
   promptEl.focus();
 }
 
+function setSidebar(open) {
+  historyPanel.hidden = !open;
+  document.body.classList.toggle('sidebar-open', open);
+  if (open) {
+    refreshWorkspaces();
+    refreshSessions();
+  }
+}
+
 function openHistory() {
-  historyPanel.hidden = false;
-  refreshSessions();
+  setSidebar(true);
   historySearch.focus();
 }
 
-historyToggle.addEventListener('click', () => {
-  if (historyPanel.hidden) openHistory();
-  else historyPanel.hidden = true;
-});
-historyClose.addEventListener('click', () => { historyPanel.hidden = true; });
+historyToggle.addEventListener('click', () => setSidebar(historyPanel.hidden));
+historyClose.addEventListener('click', () => setSidebar(false));
 newChatButton.addEventListener('click', newChat);
 historySearch.addEventListener('input', renderHistory);
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !historyPanel.hidden) historyPanel.hidden = true;
+workspaceAdd.addEventListener('click', () => {
+  workspaceForm.hidden = !workspaceForm.hidden;
+  if (!workspaceForm.hidden) workspaceName.focus();
 });
+workspaceCancel.addEventListener('click', () => { workspaceForm.hidden = true; });
+workspaceCreate.addEventListener('click', createWorkspace);
+workspaceName.addEventListener('keydown', (event) => { if (event.key === 'Enter') createWorkspace(); });
+workspacePath.addEventListener('keydown', (event) => { if (event.key === 'Enter') createWorkspace(); });
+selectToggle.addEventListener('click', () => {
+  selectMode = !selectMode;
+  selectedSessions.clear();
+  selectToggle.textContent = selectMode ? 'Done' : 'Select';
+  historySelectBar.hidden = !selectMode;
+  renderHistory();
+});
+selectAllButton.addEventListener('click', () => {
+  for (const session of visibleSessions()) selectedSessions.add(session.id);
+  renderHistory();
+});
+deleteSelectedButton.addEventListener('click', deleteSelected);
+selectCancel.addEventListener('click', () => {
+  selectMode = false;
+  selectedSessions.clear();
+  selectToggle.textContent = 'Select';
+  historySelectBar.hidden = true;
+  renderHistory();
+});
+exportAllButton.addEventListener('click', exportAll);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !historyPanel.hidden) setSidebar(false);
+});
+
+setSidebar(true);
+refreshWorkspaces();
+refreshSessions();
 
 if (!token) setStatus('missing token in URL', true);
 
@@ -1108,7 +1420,7 @@ function handleBlock(block) {
 async function send() {
   const text = promptEl.value.trim();
   if (!text || !token || sendEl.disabled) return;
-  add('user', text);
+  addUserMessage(text);
   promptEl.value = '';
   autoGrowPrompt();
   sendEl.disabled = true;
@@ -1123,7 +1435,7 @@ async function send() {
     const response = await fetch('/api/chat?token=' + encodeURIComponent(token), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: text, session: currentSessionId }),
+      body: JSON.stringify({ prompt: text, session: currentSessionId, workspace: currentSessionId ? null : currentWorkspaceId }),
       signal: controller.signal,
     });
     if (!response.ok) {
