@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""List and switch installed llama.cpp models for the user service."""
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+HOME = Path.home()
+MODELS = (HOME / ".local" / "share" / "llama.cpp" / "models").resolve()
+CONFIG = HOME / ".config" / "local-harness"
+SELECTED = CONFIG / "selected-model.json"
+DEFAULT = MODELS / "Qwen3.5-9B-Q4_K_M.gguf"
+SERVICE = "llama-server.service"
+HEALTH = "http://127.0.0.1:8080/health"
+MODELS_API = "http://127.0.0.1:8080/v1/models"
+
+
+def env():
+    result = os.environ.copy()
+    uid = os.getuid()
+    result.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+    result.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
+    return result
+
+
+def fail(message):
+    print(json.dumps({"error": message}))
+    sys.exit(1)
+
+
+def read_selected():
+    try:
+        data = json.loads(SELECTED.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    path = Path(str(data.get("path") or DEFAULT)).expanduser()
+    if not path.is_file():
+        path = DEFAULT
+    alias = str(data.get("alias") or path.stem)
+    return {"path": str(path), "alias": alias, "name": path.stem}
+
+
+def active_alias():
+    try:
+        with urllib.request.urlopen(MODELS_API, timeout=2) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        models = data.get("models") or []
+        if models:
+            return models[0].get("name") or models[0].get("model") or ""
+    except Exception:
+        pass
+    return ""
+
+
+def healthy():
+    try:
+        with urllib.request.urlopen(HEALTH, timeout=2) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
+def models():
+    selected = read_selected()
+    result = []
+    if not MODELS.is_dir():
+        return result
+    for path in sorted(MODELS.glob("*.gguf")):
+        if path.name.startswith("ggml-vocab-") or not path.is_file():
+            continue
+        result.append({
+            "name": path.stem,
+            "alias": path.stem,
+            "path": str(path),
+            "size": path.stat().st_size,
+            "selected": str(path) == selected["path"],
+        })
+    return result
+
+
+def run_systemctl(action):
+    return subprocess.run(
+        ["systemctl", "--user", action, SERVICE],
+        env=env(),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def wait_healthy(seconds=120):
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if healthy():
+            return True
+        time.sleep(1)
+    return False
+
+
+def write_selected(path):
+    data = {"path": str(path), "alias": path.stem, "name": path.stem}
+    CONFIG.mkdir(parents=True, exist_ok=True)
+    temp = SELECTED.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    os.replace(temp, SELECTED)
+    return data
+
+
+def cmd_list(_args):
+    selected = read_selected()
+    print(json.dumps({
+        "models": models(),
+        "selected": selected,
+        "active": active_alias(),
+        "healthy": healthy(),
+    }))
+
+
+def cmd_status(_args):
+    print(json.dumps({
+        "selected": read_selected(),
+        "active": active_alias(),
+        "healthy": healthy(),
+    }))
+
+
+def cmd_select(args):
+    target = Path(args.path).expanduser().resolve()
+    if not target.is_file() or target.suffix != ".gguf" or target.name.startswith("ggml-vocab-"):
+        fail(f"not a model file: {target}")
+    try:
+        target.relative_to(MODELS)
+    except ValueError:
+        fail("model must be under the llama.cpp models directory")
+    previous = read_selected()
+    if str(target) == previous["path"] and healthy():
+        print(json.dumps({"ok": True, "selected": previous, "active": active_alias()}))
+        return
+    previous_file = SELECTED.read_text(encoding="utf-8") if SELECTED.exists() else None
+    selected = write_selected(target)
+    result = run_systemctl("restart")
+    if result.returncode != 0:
+        if previous_file is not None:
+            SELECTED.write_text(previous_file, encoding="utf-8")
+        elif SELECTED.exists():
+            SELECTED.unlink()
+        fail((result.stderr or "systemctl restart failed").strip())
+    if not wait_healthy(120):
+        # Roll back to the previous model.
+        if previous_file is not None:
+            SELECTED.write_text(previous_file, encoding="utf-8")
+        elif SELECTED.exists():
+            SELECTED.unlink()
+        run_systemctl("restart")
+        wait_healthy(120)
+        fail("new model did not become healthy; rolled back")
+    print(json.dumps({
+        "ok": True,
+        "selected": selected,
+        "active": active_alias(),
+    }))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("list")
+    sub.add_parser("status")
+    select = sub.add_parser("select")
+    select.add_argument("path")
+    args = parser.parse_args()
+    if args.command == "list":
+        cmd_list(args)
+    elif args.command == "status":
+        cmd_status(args)
+    elif args.command == "select":
+        cmd_select(args)
+
+
+if __name__ == "__main__":
+    main()

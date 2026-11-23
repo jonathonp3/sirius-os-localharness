@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header::{AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_TYPE}};
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -16,7 +16,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio::sync::{Mutex, Semaphore, mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -79,6 +79,8 @@ pub async fn run(
         .route("/assets/{file}", get(asset))
         .route("/api/health", get(health))
         .route("/api/models", get(models))
+        .route("/api/local-models", get(local_models))
+        .route("/api/local-models/select", post(select_local_model))
         .route("/api/sessions", get(list_sessions))
         .route("/api/sessions/export", get(export_sessions))
         .route("/api/sessions/{id}/export", get(export_session))
@@ -168,6 +170,77 @@ async fn models(
         Err(error) => {
             (StatusCode::BAD_GATEWAY, format!("model server unreachable: {error}")).into_response()
         }
+    }
+}
+
+async fn modelctl(args: &[&str]) -> Result<String> {
+    let home = std::env::var("HOME").context("HOME is not set")?;
+    let helper = format!("{home}/.local/bin/local-harness-modelctl");
+    let mut command = if std::env::var_os("FLATPAK_ID").is_some() {
+        let mut command = tokio::process::Command::new("flatpak-spawn");
+        command.arg("--host").arg(&helper);
+        command
+    } else {
+        tokio::process::Command::new(&helper)
+    };
+    command.args(args);
+    let output = tokio::time::timeout(Duration::from_secs(180), command.output())
+        .await
+        .context("model helper timed out")?
+        .context("running model helper")?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        bail!("{}", if stderr.is_empty() { stdout } else { stderr });
+    }
+    Ok(stdout)
+}
+
+async fn local_models(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    match modelctl(&["list"]).await {
+        Ok(output) => match serde_json::from_str::<Value>(&output) {
+            Ok(value) => Json(value).into_response(),
+            Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("invalid model helper output: {error}") }))).into_response(),
+        },
+        Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct ModelSelectBody {
+    path: String,
+}
+
+async fn select_local_model(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<ModelSelectBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let active = state
+        .active_sessions
+        .lock()
+        .map(|active| !active.is_empty())
+        .unwrap_or(true);
+    if active {
+        return (StatusCode::CONFLICT, Json(json!({ "error": "a chat is running; stop it before switching models" }))).into_response();
+    }
+    match modelctl(&["select", &body.path]).await {
+        Ok(output) => match serde_json::from_str::<Value>(&output) {
+            Ok(value) => Json(value).into_response(),
+            Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("invalid model helper output: {error}") }))).into_response(),
+        },
+        Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("{error:#}") }))).into_response(),
     }
 }
 

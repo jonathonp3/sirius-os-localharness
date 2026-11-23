@@ -9,6 +9,8 @@ ICON_DIR="${HOME}/.local/share/icons/hicolor/scalable/apps"
 
 install -Dm755 "$ROOT/bin/harness" "$BIN_DIR/harness"
 install -Dm755 "$ROOT/local-harness-window" "$BIN_DIR/local-harness-window"
+install -Dm755 "$ROOT/local-harness-modelctl" "$BIN_DIR/local-harness-modelctl"
+install -Dm755 "$ROOT/local-harness-llama-start" "$BIN_DIR/local-harness-llama-start"
 install -d "$APP_DIR" "$UNIT_DIR" "$ICON_DIR"
 sed "s|@HOME@|${HOME}|g" "$ROOT/local-harness.desktop" > "$APP_DIR/org.jonathonp3.LocalHarness.desktop"
 chmod 644 "$APP_DIR/org.jonathonp3.LocalHarness.desktop"

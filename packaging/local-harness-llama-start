@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Start llama-server with the host-selected model."""
+import json
+import os
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+ROOT = HOME / ".local" / "share" / "llama.cpp"
+DEFAULT = ROOT / "models" / "Qwen3.5-9B-Q4_K_M.gguf"
+SELECTED = HOME / ".config" / "local-harness" / "selected-model.json"
+
+model = DEFAULT
+alias = DEFAULT.stem
+try:
+    data = json.loads(SELECTED.read_text(encoding="utf-8"))
+    candidate = Path(str(data.get("path") or "")).expanduser()
+    if candidate.is_file():
+        model = candidate
+        alias = str(data.get("alias") or candidate.stem)
+except Exception:
+    pass
+
+if not model.is_file():
+    print(f"llama model not found: {model}", file=sys.stderr)
+    sys.exit(1)
+
+command = [
+    "/usr/bin/distrobox", "enter", "--name", "llama-dev", "--no-tty", "--",
+    "/usr/bin/env", f"LD_LIBRARY_PATH={ROOT / 'build' / 'bin'}",
+    str(ROOT / "build" / "bin" / "llama-server"),
+    "--model", str(model),
+    "--alias", alias,
+    "--n-gpu-layers", "24",
+    "--host", "127.0.0.1",
+    "--port", "8080",
+    "--ctx-size", "32768",
+    "--device", "Vulkan0",
+    "--jinja",
+    "--threads", "16",
+    "--predict", "4096",
+    "--parallel", "1",
+    "--cors-origins", "localhost",
+]
+os.execv(command[0], command)

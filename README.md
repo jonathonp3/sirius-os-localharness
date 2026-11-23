@@ -140,6 +140,25 @@ The sidebar also supports:
 Bulk selection applies to the currently selected workspace. Existing chats
 without workspace metadata are grouped under `Home`.
 
+## Model switching
+
+The header **Model** button lists installed GGUF files in
+`~/.local/share/llama.cpp/models`. Switching restarts `llama-server` through a
+host-side helper, waits for `/health`, and updates the active-model display.
+Switching is blocked while a chat is running and rolls back if the new model
+fails to load.
+
+The host helper and selected-model wrapper are installed in `~/.local/bin`:
+
+```text
+local-harness-modelctl
+local-harness-llama-start
+```
+
+The llama user unit runs the wrapper, which reads
+`~/.config/local-harness/selected-model.json`. No model downloads are included
+in this phase.
+
 ## Model registry and presets
 
 Profiles live in `~/.config/local-harness/models.json` (or `--registry`).
