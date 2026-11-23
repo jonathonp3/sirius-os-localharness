@@ -149,6 +149,28 @@ body.sidebar-open { padding-left:350px; }
 #model-progress { width:100%; height:8px; accent-color:var(--accent); }
 #model-install-status { color:var(--muted); font-size:13px; margin-top:6px; white-space:pre-wrap; }
 
+
+#mcp-toggle { background:var(--panel); color:var(--text); border:1px solid var(--border); padding:0 10px; font-size:13px; }
+#mcp-panel { position:fixed; top:58px; right:16px; width:min(420px,92vw); max-height:calc(100vh - 76px); z-index:1300; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; box-shadow:0 16px 45px rgba(0,0,0,.35); }
+#mcp-panel[hidden] { display:none; }
+.mcp-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:7px; }
+.mcp-head strong { font-size:16px; }
+#mcp-close { background:var(--bg); color:var(--text); border:1px solid var(--border); min-width:30px; min-height:28px; padding:0 8px; font-size:17px; }
+#mcp-summary { color:var(--muted); font-size:14px; margin-bottom:8px; white-space:pre-wrap; }
+#mcp-refresh { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:0 10px; font-size:13px; min-height:28px; margin-top:8px; }
+.mcp-server { border:1px solid var(--border); border-radius:7px; padding:8px; margin-bottom:7px; background:var(--bg); }
+.mcp-server-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.mcp-server-name { color:var(--text); font-size:15px; font-weight:600; word-break:break-all; }
+.mcp-badge { font-size:12px; border:1px solid var(--border); border-radius:10px; padding:2px 7px; color:var(--muted); }
+.mcp-meta { color:var(--muted); font-size:14px; margin:4px 0 6px; }
+.mcp-tool { border-top:1px solid var(--border); padding:6px 0 2px; }
+.mcp-tool:first-child { border-top:0; }
+.mcp-tool-name { color:var(--text); font-family:ui-monospace,monospace; font-size:13px; word-break:break-all; }
+.mcp-tool-desc { color:var(--muted); font-size:13px; margin-top:2px; white-space:pre-wrap; }
+.mcp-failure { border:1px solid #a33; border-radius:7px; padding:8px; margin-bottom:7px; background:color-mix(in srgb, var(--panel) 80%, #a33); color:var(--text); font-size:13px; }
+.mcp-failure strong { display:block; font-size:15px; margin-bottom:3px; }
+.mcp-empty { color:var(--muted); font-size:13px; padding:6px 2px; }
+
 header select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px; }
 form { border-top:1px solid var(--border); padding:0; display:flex; flex-direction:column; gap:0; background:var(--bg); box-sizing:border-box; flex-shrink:0; position:relative; z-index:0; }
 #prompt-bar { padding:0 12px; background:var(--bg); flex:0 0 auto; position:relative; z-index:1; }
@@ -208,6 +230,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <header><h1>Local Harness</h1>
 <button id="history-toggle" type="button" title="Show or hide workspaces and chats">☰ Chats</button>
 <button id="model-toggle" type="button" title="Switch installed models">Model</button>
+<button id="mcp-toggle" type="button" title="MCP server status">MCP</button>
 <select id="theme" title="Theme">
 <option value="xterm">Xterm</option>
 <option value="solarized">Solarized</option>
@@ -289,6 +312,15 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
     <div id="model-install-status"></div>
   </div>
 </aside>
+<aside id="mcp-panel" hidden>
+  <div class="mcp-head">
+    <strong>MCP Servers</strong>
+    <button id="mcp-close" type="button" title="Close MCP status">×</button>
+  </div>
+  <div id="mcp-summary">Loading MCP status…</div>
+  <div id="mcp-server-list"></div>
+  <button id="mcp-refresh" type="button">Refresh</button>
+</aside>
 <main id="log"></main>
 <form id="form">
 <div id="prompt-bar">
@@ -330,6 +362,12 @@ const modelDownloadText = document.getElementById('model-download-text');
 const modelProgress = document.getElementById('model-progress');
 const modelCancel = document.getElementById('model-cancel');
 const modelInstallStatus = document.getElementById('model-install-status');
+const mcpToggle = document.getElementById('mcp-toggle');
+const mcpPanel = document.getElementById('mcp-panel');
+const mcpClose = document.getElementById('mcp-close');
+const mcpSummary = document.getElementById('mcp-summary');
+const mcpServerList = document.getElementById('mcp-server-list');
+const mcpRefresh = document.getElementById('mcp-refresh');
 const historySearch = document.getElementById('history-search');
 const historyList = document.getElementById('history-list');
 const newChatButton = document.getElementById('new-chat');
@@ -523,6 +561,80 @@ function humanSize(bytes) {
   if (value >= 1024 ** 3) return (value / 1024 ** 3).toFixed(2) + ' GB';
   if (value >= 1024 ** 2) return (value / 1024 ** 2).toFixed(1) + ' MB';
   return value + ' B';
+}
+
+async function refreshMcp() {
+  if (!token) return;
+  mcpSummary.textContent = 'Loading MCP status…';
+  mcpServerList.innerHTML = '';
+  try {
+    const response = await fetch('/api/mcp/status?token=' + encodeURIComponent(token));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      mcpSummary.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    renderMcp(data);
+  } catch (error) {
+    mcpSummary.textContent = String(error);
+  }
+}
+
+function renderMcp(data) {
+  const servers = data.servers || [];
+  const failures = data.failures || [];
+  const toolCount = Number(data.tool_count) || 0;
+  mcpSummary.textContent = servers.length + ' connected · ' + toolCount + ' tool' + (toolCount === 1 ? '' : 's') + (failures.length ? ' · ' + failures.length + ' failed' : '');
+  mcpServerList.innerHTML = '';
+  for (const failure of failures) {
+    const card = document.createElement('div');
+    card.className = 'mcp-failure';
+    const name = document.createElement('strong');
+    name.textContent = failure.name + ' — unavailable';
+    const error = document.createElement('div');
+    error.textContent = failure.error;
+    card.append(name, error);
+    mcpServerList.appendChild(card);
+  }
+  if (!servers.length && !failures.length) {
+    const empty = document.createElement('div');
+    empty.className = 'mcp-empty';
+    empty.textContent = 'No MCP servers configured. Add ~/.harness/mcp.json and restart Local Harness after starting the server.';
+    mcpServerList.appendChild(empty);
+    return;
+  }
+  for (const server of servers) {
+    const card = document.createElement('div');
+    card.className = 'mcp-server';
+    const head = document.createElement('div');
+    head.className = 'mcp-server-head';
+    const name = document.createElement('div');
+    name.className = 'mcp-server-name';
+    name.textContent = server.name;
+    const badge = document.createElement('span');
+    badge.className = 'mcp-badge';
+    badge.textContent = server.transport || 'mcp';
+    head.append(name, badge);
+    const meta = document.createElement('div');
+    meta.className = 'mcp-meta';
+    meta.textContent = (server.tools || []).length + ' tools';
+    card.append(head, meta);
+    const tools = document.createElement('div');
+    for (const tool of server.tools || []) {
+      const item = document.createElement('div');
+      item.className = 'mcp-tool';
+      const toolName = document.createElement('div');
+      toolName.className = 'mcp-tool-name';
+      toolName.textContent = tool.call_name;
+      const description = document.createElement('div');
+      description.className = 'mcp-tool-desc';
+      description.textContent = tool.description || '';
+      item.append(toolName, description);
+      tools.appendChild(item);
+    }
+    card.appendChild(tools);
+    mcpServerList.appendChild(card);
+  }
 }
 
 let modelDownloadTimer = null;
@@ -1167,12 +1279,22 @@ sidebarCollapse.addEventListener('click', () => setSidebar(false));
 modelToggle.addEventListener('click', () => {
   modelPanel.hidden = !modelPanel.hidden;
   if (!modelPanel.hidden) {
+    mcpPanel.hidden = true;
     refreshLocalModels();
     refreshModelDownload();
   } else {
     stopModelDownloadTimer();
   }
 });
+mcpToggle.addEventListener('click', () => {
+  mcpPanel.hidden = !mcpPanel.hidden;
+  if (!mcpPanel.hidden) {
+    modelPanel.hidden = true;
+    refreshMcp();
+  }
+});
+mcpClose.addEventListener('click', () => { mcpPanel.hidden = true; });
+mcpRefresh.addEventListener('click', refreshMcp);
 modelClose.addEventListener('click', () => {
   modelPanel.hidden = true;
   stopModelDownloadTimer();
@@ -1232,6 +1354,8 @@ document.addEventListener('keydown', (event) => {
   } else if (event.ctrlKey && key === 'x' && !editing) {
     event.preventDefault();
     setSidebar(false);
+  } else if (event.key === 'Escape' && !mcpPanel.hidden) {
+    mcpPanel.hidden = true;
   } else if (event.key === 'Escape' && !modelPanel.hidden) {
     modelPanel.hidden = true;
     stopModelDownloadTimer();

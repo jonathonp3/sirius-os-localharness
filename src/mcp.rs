@@ -47,6 +47,26 @@ pub struct McpServer {
     transport: Transport,
 }
 
+#[derive(Default)]
+pub struct McpLoad {
+    pub servers: Vec<Arc<McpServer>>,
+    pub failures: Vec<McpFailure>,
+}
+
+pub struct McpFailure {
+    pub name: String,
+    pub error: String,
+}
+
+impl McpServer {
+    pub fn transport_name(&self) -> &'static str {
+        match self.transport {
+            Transport::Stdio(_) => "stdio",
+            Transport::Http(_) => "http",
+        }
+    }
+}
+
 enum Transport {
     Stdio(StdioTransport),
     Http(HttpTransport),
@@ -67,7 +87,7 @@ struct HttpTransport {
     next_id: AtomicU64,
 }
 
-pub async fn load(path: &Path) -> Result<Vec<Arc<McpServer>>> {
+pub async fn load(path: &Path) -> Result<McpLoad> {
     let text = tokio::fs::read_to_string(path)
         .await
         .with_context(|| format!("reading MCP config {}", path.display()))?;
@@ -75,6 +95,7 @@ pub async fn load(path: &Path) -> Result<Vec<Arc<McpServer>>> {
         .with_context(|| format!("parsing MCP config {}", path.display()))?;
 
     let mut servers = Vec::new();
+    let mut failures = Vec::new();
     let mut call_names = HashSet::new();
     for server in config.servers {
         match (&server.command, &server.url) {
@@ -92,6 +113,10 @@ pub async fn load(path: &Path) -> Result<Vec<Arc<McpServer>>> {
             Ok(started) => Arc::new(started),
             Err(error) => {
                 eprintln!("MCP server `{}` unavailable: {error:#}", server.name);
+                failures.push(McpFailure {
+                    name: server.name.clone(),
+                    error: format!("{error:#}"),
+                });
                 continue;
             }
         };
@@ -102,7 +127,7 @@ pub async fn load(path: &Path) -> Result<Vec<Arc<McpServer>>> {
         }
         servers.push(started);
     }
-    Ok(servers)
+    Ok(McpLoad { servers, failures })
 }
 
 impl McpServer {

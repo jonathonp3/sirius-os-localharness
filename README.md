@@ -259,7 +259,9 @@ Then use `~/.harness/mcp.json`:
 
 Restart Local Harness after PhotoCraft is running. Tools are exposed as
 `mcp__photocraft__<tool>`. MCP startup failures are logged and skipped, so a
-removed PhotoCraft automation server does not stop the harness.
+removed PhotoCraft automation server does not stop the harness. The header
+**MCP** button shows connected servers, their transports/tools, and any failed
+servers.
 
 MCP stdio servers work through the same seam:
 

@@ -46,6 +46,7 @@ struct AppState {
     auto_approve: bool,
     session_lock: Arc<Mutex<()>>,
     active_sessions: Arc<StdMutex<HashSet<String>>>,
+    mcp_failures: Arc<Vec<crate::mcp::McpFailure>>,
 }
 
 pub async fn run(
@@ -56,6 +57,7 @@ pub async fn run(
     open: bool,
     concurrency: usize,
     auto_approve: bool,
+    mcp_failures: Arc<Vec<crate::mcp::McpFailure>>,
 ) -> Result<()> {
     let token = match token {
         Some(token) => token,
@@ -73,6 +75,7 @@ pub async fn run(
         auto_approve,
         session_lock: Arc::new(Mutex::new(())),
         active_sessions: Arc::new(StdMutex::new(HashSet::new())),
+        mcp_failures,
     });
     let app = Router::new()
         .route("/", get(index))
@@ -86,6 +89,7 @@ pub async fn run(
         .route("/api/model-catalog/install", post(model_catalog_install))
         .route("/api/model-catalog/status", get(model_catalog_status))
         .route("/api/model-catalog/cancel", post(model_catalog_cancel))
+        .route("/api/mcp/status", get(mcp_status))
         .route("/api/sessions", get(list_sessions))
         .route("/api/sessions/export", get(export_sessions))
         .route("/api/sessions/{id}/export", get(export_session))
@@ -176,6 +180,43 @@ async fn models(
             (StatusCode::BAD_GATEWAY, format!("model server unreachable: {error}")).into_response()
         }
     }
+}
+
+async fn mcp_status(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let servers: Vec<Value> = state
+        .config
+        .mcp
+        .iter()
+        .map(|server| {
+            json!({
+                "name": server.name,
+                "transport": server.transport_name(),
+                "tools": server.tools.iter().map(|tool| json!({
+                    "name": tool.name,
+                    "call_name": tool.call_name,
+                    "description": tool.description,
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let failures: Vec<Value> = state
+        .mcp_failures
+        .iter()
+        .map(|failure| json!({ "name": failure.name, "error": failure.error }))
+        .collect();
+    Json(json!({
+        "servers": servers,
+        "failures": failures,
+        "tool_count": state.config.mcp.iter().map(|server| server.tools.len()).sum::<usize>(),
+    }))
+    .into_response()
 }
 
 async fn modelctl(args: &[&str]) -> Result<String> {

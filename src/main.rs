@@ -257,10 +257,12 @@ async fn main() -> Result<()> {
         .mcp
         .clone()
         .or_else(|| registry::discover_named(&workspace, "mcp.json"));
-    let mcp_servers: Arc<Vec<Arc<mcp::McpServer>>> = match mcp_path {
-        Some(path) => Arc::new(mcp::load(&path).await?),
-        None => Arc::new(Vec::new()),
+    let mcp_load = match mcp_path {
+        Some(path) => mcp::load(&path).await?,
+        None => mcp::McpLoad::default(),
     };
+    let mcp_servers: Arc<Vec<Arc<mcp::McpServer>>> = Arc::new(mcp_load.servers);
+    let mcp_failures = Arc::new(mcp_load.failures);
     let mcp_tool_count: usize = mcp_servers.iter().map(|server| server.tools.len()).sum();
     let scopes = tools::ToolScopes {
         allow: cli
@@ -376,7 +378,7 @@ async fn main() -> Result<()> {
                 max_children,
                 web: cli.allow_web,
             };
-            server::run(config, data_dir, port, token, open, concurrency, cli.yes).await
+            server::run(config, data_dir, port, token, open, concurrency, cli.yes, mcp_failures).await
         }
         Command::Workflow { file, max_steps, max_tokens, allow_write, allow_shell, think, max_depth } => {
             let max_tokens = max_tokens
