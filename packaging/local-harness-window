@@ -132,7 +132,7 @@ def main():
 
     gi.require_version("Gtk", "4.0")
     gi.require_version("WebKit", "6.0")
-    from gi.repository import Gtk, Gdk, WebKit
+    from gi.repository import Gtk, Gdk, Gio, WebKit
 
     app = Gtk.Application(application_id=f"{APP_ID}.Native")
 
@@ -170,6 +170,8 @@ def main():
         manager.connect("script-message-received::clipboard", on_clipboard_message)
         webview = WebKit.WebView(user_content_manager=manager)
 
+        dialogs = []
+
         def on_savefile_message(_manager, value):
             try:
                 payload = json.loads(value.to_string())
@@ -179,11 +181,42 @@ def main():
                 text = str(payload.get("text") or "")
                 downloads = Path.home() / "Downloads"
                 downloads.mkdir(parents=True, exist_ok=True)
-                path = downloads / filename
-                path.write_text(text, encoding="utf-8")
-                print(f"saved: {path}", flush=True)
-                script = "window.__harnessFileSaved(" + json.dumps(path.name) + ");"
-                webview.evaluate_javascript(script, -1, None, None, None, None, None)
+
+                def write_to(path):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(text, encoding="utf-8")
+                    print(f"saved: {path}", flush=True)
+                    script = "window.__harnessFileSaved(" + json.dumps(path.name) + ");"
+                    webview.evaluate_javascript(script, -1, None, None, None, None, None)
+
+                dialog = Gtk.FileDialog()
+                dialog.set_title("Save chat transcript")
+                dialog.set_initial_name(filename)
+                try:
+                    dialog.set_initial_folder(Gio.File.new_for_path(str(downloads)))
+                except Exception:
+                    pass
+                dialogs.append(dialog)
+
+                def on_saved(source, result, *args):
+                    try:
+                        dialogs.remove(dialog)
+                    except ValueError:
+                        pass
+                    try:
+                        file = source.save_finish(result)
+                        path = file.get_path()
+                        if path:
+                            write_to(Path(path))
+                    except Exception as error:
+                        print(f"save cancelled: {error}", flush=True)
+                        script = "window.__harnessFileCanceled();"
+                        webview.evaluate_javascript(script, -1, None, None, None, None, None)
+
+                try:
+                    dialog.save(window, None, on_saved)
+                except Exception:
+                    write_to(downloads / filename)
             except Exception as error:
                 print(f"save failed: {error}", flush=True)
 

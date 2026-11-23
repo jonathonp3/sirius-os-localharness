@@ -168,7 +168,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 </head>
 <body>
 <header><h1>Local Harness</h1>
-<button id="history-toggle" type="button" title="Chat history">History</button>
+<button id="history-toggle" type="button" title="Show or hide workspaces and chats">☰ Chats</button>
 <select id="theme" title="Theme">
 <option value="dark">Dark</option>
 <option value="midnight">Midnight</option>
@@ -192,7 +192,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
   <div id="workspace-list"></div>
   <div id="workspace-form" hidden>
     <input id="workspace-name" type="text" placeholder="Workspace name" autocomplete="off">
-    <input id="workspace-path" type="text" placeholder="Path (optional; created if blank)" autocomplete="off">
+    <input id="workspace-path" type="text" placeholder="Path (optional; created if needed)" autocomplete="off">
     <div class="workspace-form-actions">
       <button id="workspace-create" type="button">Create</button>
       <button id="workspace-cancel" type="button">Cancel</button>
@@ -361,16 +361,42 @@ function downloadText(filename, text) {
 }
 
 window.__harnessFileSaved = (name) => {
-  add('meta', 'saved ' + name + ' to Downloads');
+  setStatus('saved ' + name);
+  add('meta', 'saved ' + name);
 };
 
-function saveTextFile(filename, text) {
+window.__harnessFileCanceled = () => {
+  setStatus('ready');
+  add('meta', 'save cancelled');
+};
+
+async function saveTextFile(filename, text) {
+  setStatus('choose save location');
   const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.savefile;
   if (bridge) {
     bridge.postMessage(JSON.stringify({ filename, text }));
     return;
   }
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'Text transcript', accept: { 'text/plain': ['.txt'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      window.__harnessFileSaved(handle.name);
+      return;
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        window.__harnessFileCanceled();
+        return;
+      }
+    }
+  }
   downloadText(filename, text);
+  setStatus('ready');
 }
 
 async function exportSession(id) {
@@ -380,7 +406,7 @@ async function exportSession(id) {
       add('error', await response.text());
       return;
     }
-    saveTextFile('local-harness-' + id + '.txt', await response.text());
+    await saveTextFile('local-harness-' + id + '.txt', await response.text());
   } catch (error) {
     add('error', String(error));
   }
@@ -397,7 +423,7 @@ async function exportAll() {
       add('error', await response.text());
       return;
     }
-    saveTextFile(selectMode && selectedSessions.size ? 'local-harness-selected.txt' : 'local-harness-chats.txt', await response.text());
+    await saveTextFile(selectMode && selectedSessions.size ? 'local-harness-selected.txt' : 'local-harness-chats.txt', await response.text());
   } catch (error) {
     add('error', String(error));
   }
@@ -451,7 +477,8 @@ function selectWorkspace(id) {
   currentWorkspaceId = id;
   currentSessionId = null;
   log.innerHTML = '';
-  add('meta', 'workspace · ' + currentWorkspace().name);
+  const workspace = currentWorkspace();
+  add('meta', 'workspace · ' + workspace.name + (workspace.path ? ' · ' + workspace.path : ''));
   setStatus('ready');
   renderWorkspaces();
   refreshSessions();
@@ -789,7 +816,12 @@ selectCancel.addEventListener('click', () => {
 });
 exportAllButton.addEventListener('click', exportAll);
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !historyPanel.hidden) setSidebar(false);
+  if (event.ctrlKey && event.key.toLowerCase() === 'b') {
+    event.preventDefault();
+    setSidebar(historyPanel.hidden);
+  } else if (event.key === 'Escape' && !historyPanel.hidden) {
+    setSidebar(false);
+  }
 });
 
 setSidebar(false);

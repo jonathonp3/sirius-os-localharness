@@ -125,15 +125,16 @@ network. For a strict read-only-web session, use
 
 ## Chats, workspaces, export
 
-The left sidebar is hidden by default; open it with **History**. It groups chats by workspace. `Home` uses the service workspace;
-`+` creates a named workspace under the home directory (or at an explicit path)
-and new chats in that workspace run tools from that directory.
+The left sidebar is hidden by default; open it with **☰ Chats** or Ctrl+B. It groups chats by workspace. `Home` uses the service workspace;
+`+` creates a named workspace under the home directory (or at an explicit path,
+creating the directory if needed) and new chats in that workspace run tools
+from that directory.
 
 The sidebar also supports:
 
 - search, pin, rename, and per-chat delete
 - **Select** mode with Select all / Delete selected (soft-delete to `sessions/trash`)
-- **Export** per chat, or all/selected chats as a `.txt` transcript (native window saves to `~/Downloads`; browser downloads normally)
+- **Export** per chat, or all/selected chats as a `.txt` transcript; the native window opens a Save As dialog (browser uses its save picker/download)
 - a **copy** button on each user prompt, including the active prompt bubble
 
 Bulk selection applies to the currently selected workspace. Existing chats
