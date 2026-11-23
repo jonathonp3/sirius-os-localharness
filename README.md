@@ -146,7 +146,17 @@ The header **Model** button lists installed GGUF files in
 `~/.local/share/llama.cpp/models`. Switching restarts `llama-server` through a
 host-side helper, waits for `/health`, and updates the active-model display.
 Switching is blocked while a chat is running and rolls back if the new model
-fails to load.
+fails to load. The llama unit stops its Distrobox container explicitly so the
+model switch does not hit the systemd stop timeout.
+
+The model panel also includes **Install from Hugging Face**. Search for a
+GGUF repository, list its GGUF files, and install one after confirming the
+repo/file/size. Downloads run in the background, show progress, can be
+cancelled, verify the Hugging Face SHA-256 when present, and reject files that
+are not GGUF. Installed models are listed but never loaded automatically.
+
+For gated repositories, set `HF_TOKEN` in the host environment, or place a
+token in `~/.cache/huggingface/token`.
 
 The host helper and selected-model wrapper are installed in `~/.local/bin`:
 

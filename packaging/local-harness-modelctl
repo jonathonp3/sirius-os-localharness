@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """List and switch installed llama.cpp models for the user service."""
 import argparse
+import hashlib
 import json
 import os
+import re
+import shutil
+import signal
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -15,6 +20,9 @@ CONFIG = HOME / ".config" / "local-harness"
 SELECTED = CONFIG / "selected-model.json"
 DEFAULT = MODELS / "Qwen3.5-9B-Q4_K_M.gguf"
 SERVICE = "llama-server.service"
+HF = "https://huggingface.co"
+DOWNLOAD = CONFIG / "download.json"
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 HEALTH = "http://127.0.0.1:8080/health"
 MODELS_API = "http://127.0.0.1:8080/v1/models"
 
@@ -110,6 +118,248 @@ def write_selected(path):
     return data
 
 
+def hf_token():
+    token = os.environ.get("HF_TOKEN", "").strip()
+    if token:
+        return token
+    try:
+        return (HOME / ".cache" / "huggingface" / "token").read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
+def hf_request(url):
+    headers = {"User-Agent": "local-harness-modelctl/1", "Accept": "application/json"}
+    token = hf_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def valid_repo(repo):
+    if not REPO_RE.match(repo or ""):
+        fail("expected a Hugging Face repo like owner/name")
+    return repo
+
+
+def repo_files(repo):
+    valid_repo(repo)
+    url = f"{HF}/api/models/{urllib.parse.quote(repo, safe='/')}/tree/main?recursive=true&expand=true"
+    data = hf_request(url)
+    files = []
+    if not isinstance(data, list):
+        fail("unexpected Hugging Face response")
+    for entry in data:
+        if entry.get("type") != "file":
+            continue
+        path = str(entry.get("path") or "")
+        if not path.lower().endswith(".gguf") or path.startswith("ggml-vocab-"):
+            continue
+        if path.startswith("/") or ".." in path.split("/"):
+            continue
+        lfs = entry.get("lfs") or {}
+        size = int(lfs.get("size") or entry.get("size") or 0)
+        digest = str(lfs.get("oid") or "")
+        files.append({
+            "name": path,
+            "size": size,
+            "sha256": digest if re.fullmatch(r"[0-9a-fA-F]{64}", digest) else "",
+        })
+    files.sort(key=lambda item: item["name"].lower())
+    return files
+
+
+def write_download(data):
+    CONFIG.mkdir(parents=True, exist_ok=True)
+    temp = DOWNLOAD.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    os.replace(temp, DOWNLOAD)
+
+
+def read_download():
+    try:
+        return json.loads(DOWNLOAD.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def cmd_search(args):
+    query = args.query.strip()
+    if not query:
+        fail("search query is required")
+    url = f"{HF}/api/models?" + urllib.parse.urlencode({
+        "search": query,
+        "limit": 12,
+        "sort": "downloads",
+        "direction": -1,
+        "filter": "gguf",
+    })
+    data = hf_request(url)
+    results = []
+    for item in data if isinstance(data, list) else []:
+        results.append({
+            "id": item.get("id", ""),
+            "downloads": item.get("downloads", 0),
+            "likes": item.get("likes", 0),
+            "pipeline_tag": item.get("pipeline_tag", ""),
+        })
+    print(json.dumps({"results": results}))
+
+
+def cmd_files(args):
+    print(json.dumps({"repo": args.repo, "files": repo_files(args.repo)}))
+
+
+def cmd_install(args):
+    repo = valid_repo(args.repo)
+    current = read_download()
+    if current.get("state") == "downloading":
+        fail("a model download is already running")
+    files = repo_files(repo)
+    target = next((item for item in files if item["name"] == args.file), None)
+    if target is None:
+        fail("file is not a GGUF in this repo")
+    name = Path(target["name"]).name
+    destination = MODELS / name
+    if destination.exists():
+        fail(f"model already exists: {destination}")
+    size = int(target.get("size") or 0)
+    if size <= 0:
+        fail("could not determine model size")
+    MODELS.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(MODELS).free
+    if free < size + 1024 ** 3:
+        fail(f"not enough free disk space: need {size + 1024 ** 3} bytes")
+    status = {
+        "state": "downloading",
+        "repo": repo,
+        "file": target["name"],
+        "destination": str(destination),
+        "total": size,
+        "downloaded": 0,
+        "sha256": target.get("sha256", ""),
+        "pid": os.getpid(),
+        "started": int(time.time()),
+        "message": "starting download",
+    }
+    write_download(status)
+    process = subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "_download", repo, target["name"], str(size), target.get("sha256", ""), str(destination)],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env(),
+    )
+    status["pid"] = process.pid
+    status["message"] = "downloading"
+    write_download(status)
+    print(json.dumps({"started": True, "download": status}))
+
+
+def cmd_download_status(_args):
+    status = read_download()
+    if not status:
+        print(json.dumps({"state": "idle"}))
+        return
+    if status.get("state") == "downloading":
+        pid = int(status.get("pid") or 0)
+        alive = False
+        if pid > 0:
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except OSError:
+                alive = False
+        if not alive:
+            status["state"] = "error"
+            status["error"] = "download worker stopped"
+            write_download(status)
+    print(json.dumps(status))
+
+
+def cmd_download_cancel(_args):
+    status = read_download()
+    if status.get("state") != "downloading":
+        fail("no download is running")
+    pid = int(status.get("pid") or 0)
+    if pid > 0:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    part = Path(str(status.get("destination") or "")) .with_suffix(Path(str(status.get("destination") or "")).suffix + ".part")
+    try:
+        part.unlink()
+    except OSError:
+        pass
+    status["state"] = "cancelled"
+    status["message"] = "download cancelled"
+    write_download(status)
+    print(json.dumps(status))
+
+
+def cmd_download_worker(args):
+    destination = Path(args.destination)
+    part = destination.with_suffix(destination.suffix + ".part")
+    url = f"{HF}/{urllib.parse.quote(args.repo, safe='/')}/resolve/main/{urllib.parse.quote(args.file, safe='/')}?download=true"
+    headers = {"User-Agent": "local-harness-modelctl/1"}
+    token = hf_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    total = int(args.size or 0)
+    digest = hashlib.sha256()
+    downloaded = 0
+    last = 0.0
+    try:
+        MODELS.mkdir(parents=True, exist_ok=True)
+        request = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(request, timeout=60) as response, open(part, "wb") as handle:
+            length = response.headers.get("Content-Length")
+            if length and total <= 0:
+                total = int(length)
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                handle.write(chunk)
+                digest.update(chunk)
+                downloaded += len(chunk)
+                now = time.time()
+                if now - last >= 1:
+                    last = now
+                    status = read_download()
+                    if status.get("state") == "cancelled":
+                        raise RuntimeError("cancelled")
+                    status.update({"pid": os.getpid(), "downloaded": downloaded, "total": total, "message": "downloading"})
+                    write_download(status)
+        if args.sha256 and digest.hexdigest().lower() != args.sha256.lower():
+            raise RuntimeError("SHA-256 checksum mismatch")
+        with open(part, "rb") as handle:
+            if handle.read(4) != b"GGUF":
+                raise RuntimeError("downloaded file is not GGUF")
+        os.replace(part, destination)
+        status = read_download()
+        status.update({
+            "pid": os.getpid(),
+            "state": "complete",
+            "downloaded": downloaded,
+            "total": total or downloaded,
+            "message": "installed",
+            "destination": str(destination),
+        })
+        write_download(status)
+    except Exception as error:
+        try:
+            part.unlink()
+        except OSError:
+            pass
+        status = read_download()
+        status.update({"pid": os.getpid(), "state": "error", "error": str(error), "message": "download failed"})
+        write_download(status)
+
+
 def cmd_list(_args):
     selected = read_selected()
     print(json.dumps({
@@ -172,6 +422,21 @@ def main():
     sub.add_parser("status")
     select = sub.add_parser("select")
     select.add_argument("path")
+    search = sub.add_parser("search")
+    search.add_argument("query")
+    files = sub.add_parser("files")
+    files.add_argument("repo")
+    install = sub.add_parser("install")
+    install.add_argument("repo")
+    install.add_argument("file")
+    sub.add_parser("download-status")
+    sub.add_parser("download-cancel")
+    worker = sub.add_parser("_download")
+    worker.add_argument("repo")
+    worker.add_argument("file")
+    worker.add_argument("size")
+    worker.add_argument("sha256")
+    worker.add_argument("destination")
     args = parser.parse_args()
     if args.command == "list":
         cmd_list(args)
@@ -179,6 +444,18 @@ def main():
         cmd_status(args)
     elif args.command == "select":
         cmd_select(args)
+    elif args.command == "search":
+        cmd_search(args)
+    elif args.command == "files":
+        cmd_files(args)
+    elif args.command == "install":
+        cmd_install(args)
+    elif args.command == "download-status":
+        cmd_download_status(args)
+    elif args.command == "download-cancel":
+        cmd_download_cancel(args)
+    elif args.command == "_download":
+        cmd_download_worker(args)
 
 
 if __name__ == "__main__":

@@ -132,6 +132,23 @@ body.sidebar-open { padding-left:350px; }
 .model-actions button:disabled { opacity:.5; }
 .model-empty { color:var(--muted); font-size:13px; padding:8px 2px; }
 
+
+.model-install { border-top:1px solid var(--border); margin-top:10px; padding-top:10px; }
+.model-install-title { font-size:14px; font-weight:600; margin-bottom:7px; }
+.model-row { display:flex; gap:5px; margin-bottom:6px; }
+.model-row input { flex:1; min-width:0; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:5px 7px; font-size:12px; }
+.model-row button, #model-cancel { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:0 8px; font-size:12px; min-height:28px; }
+#model-cancel { margin-top:5px; }
+#model-search-results, #model-files { display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
+.catalog-item { display:flex; justify-content:space-between; align-items:center; gap:6px; border:1px solid var(--border); border-radius:5px; padding:5px 7px; background:var(--bg); font-size:12px; }
+.catalog-item button { background:var(--accent); color:#08111f; border:0; border-radius:4px; min-height:24px; padding:0 7px; font-size:11px; }
+.catalog-name { color:var(--text); word-break:break-all; }
+.catalog-meta { color:var(--muted); font-size:11px; }
+#model-download { margin-top:6px; }
+#model-download-text { color:var(--muted); font-size:12px; margin-bottom:4px; white-space:pre-wrap; }
+#model-progress { width:100%; height:8px; accent-color:var(--accent); }
+#model-install-status { color:var(--muted); font-size:12px; margin-top:6px; white-space:pre-wrap; }
+
 header select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px; }
 form { border-top:1px solid var(--border); padding:0; display:flex; flex-direction:column; gap:0; background:var(--bg); box-sizing:border-box; flex-shrink:0; position:relative; z-index:0; }
 #prompt-bar { padding:0 12px; background:var(--bg); flex:0 0 auto; position:relative; z-index:1; }
@@ -252,6 +269,25 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
   </div>
   <div id="model-status">Loading models…</div>
   <div id="model-list"></div>
+  <div class="model-install">
+    <div class="model-install-title">Install from Hugging Face</div>
+    <div class="model-row">
+      <input id="model-search" type="search" placeholder="Search GGUF models…" autocomplete="off">
+      <button id="model-search-btn" type="button">Search</button>
+    </div>
+    <div id="model-search-results"></div>
+    <div class="model-row">
+      <input id="model-repo" type="text" placeholder="owner/repo" autocomplete="off">
+      <button id="model-files-btn" type="button">Files</button>
+    </div>
+    <div id="model-files"></div>
+    <div id="model-download" hidden>
+      <div id="model-download-text"></div>
+      <progress id="model-progress" max="100" value="0"></progress>
+      <button id="model-cancel" type="button">Cancel download</button>
+    </div>
+    <div id="model-install-status"></div>
+  </div>
 </aside>
 <main id="log"></main>
 <form id="form">
@@ -283,6 +319,17 @@ const modelPanel = document.getElementById('model-panel');
 const modelClose = document.getElementById('model-close');
 const modelStatus = document.getElementById('model-status');
 const modelList = document.getElementById('model-list');
+const modelSearch = document.getElementById('model-search');
+const modelSearchButton = document.getElementById('model-search-btn');
+const modelSearchResults = document.getElementById('model-search-results');
+const modelRepo = document.getElementById('model-repo');
+const modelFilesButton = document.getElementById('model-files-btn');
+const modelFiles = document.getElementById('model-files');
+const modelDownload = document.getElementById('model-download');
+const modelDownloadText = document.getElementById('model-download-text');
+const modelProgress = document.getElementById('model-progress');
+const modelCancel = document.getElementById('model-cancel');
+const modelInstallStatus = document.getElementById('model-install-status');
 const historySearch = document.getElementById('history-search');
 const historyList = document.getElementById('history-list');
 const newChatButton = document.getElementById('new-chat');
@@ -476,6 +523,186 @@ function humanSize(bytes) {
   if (value >= 1024 ** 3) return (value / 1024 ** 3).toFixed(2) + ' GB';
   if (value >= 1024 ** 2) return (value / 1024 ** 2).toFixed(1) + ' MB';
   return value + ' B';
+}
+
+let modelDownloadTimer = null;
+
+function stopModelDownloadTimer() {
+  if (modelDownloadTimer) {
+    clearInterval(modelDownloadTimer);
+    modelDownloadTimer = null;
+  }
+}
+
+async function searchModelCatalog() {
+  const query = modelSearch.value.trim();
+  if (!query) return;
+  modelSearchResults.innerHTML = '';
+  modelInstallStatus.textContent = 'Searching Hugging Face…';
+  try {
+    const response = await fetch('/api/model-catalog/search?token=' + encodeURIComponent(token) + '&query=' + encodeURIComponent(query));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      modelInstallStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    modelInstallStatus.textContent = '';
+    for (const item of data.results || []) {
+      const row = document.createElement('div');
+      row.className = 'catalog-item';
+      const info = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'catalog-name';
+      name.textContent = item.id;
+      const meta = document.createElement('div');
+      meta.className = 'catalog-meta';
+      meta.textContent = (item.downloads || 0) + ' downloads' + (item.pipeline_tag ? ' · ' + item.pipeline_tag : '');
+      info.append(name, meta);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Files';
+      button.addEventListener('click', () => {
+        modelRepo.value = item.id;
+        loadModelFiles(item.id);
+      });
+      row.append(info, button);
+      modelSearchResults.appendChild(row);
+    }
+    if (!(data.results || []).length) {
+      modelInstallStatus.textContent = 'No GGUF repositories found.';
+    }
+  } catch (error) {
+    modelInstallStatus.textContent = String(error);
+  }
+}
+
+async function loadModelFiles(repo) {
+  const value = (repo || modelRepo.value).trim();
+  if (!value) return;
+  modelRepo.value = value;
+  modelFiles.innerHTML = '';
+  modelInstallStatus.textContent = 'Loading files…';
+  try {
+    const response = await fetch('/api/model-catalog/files?token=' + encodeURIComponent(token) + '&repo=' + encodeURIComponent(value));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      modelInstallStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    modelInstallStatus.textContent = '';
+    for (const file of data.files || []) {
+      const row = document.createElement('div');
+      row.className = 'catalog-item';
+      const info = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'catalog-name';
+      name.textContent = file.name;
+      const meta = document.createElement('div');
+      meta.className = 'catalog-meta';
+      meta.textContent = humanSize(file.size) + (file.sha256 ? ' · SHA-256' : '');
+      info.append(name, meta);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Install';
+      button.addEventListener('click', () => installModel(value, file));
+      row.append(info, button);
+      modelFiles.appendChild(row);
+    }
+    if (!(data.files || []).length) {
+      modelInstallStatus.textContent = 'No GGUF files in this repository.';
+    }
+  } catch (error) {
+    modelInstallStatus.textContent = String(error);
+  }
+}
+
+async function installModel(repo, file) {
+  if (modelDownloadTimer) return;
+  if (!confirm('Download and install "' + file.name + '"?\n\nRepo: ' + repo + '\nSize: ' + humanSize(file.size) + '\n\nIt will not be loaded automatically.')) return;
+  modelInstallStatus.textContent = 'Starting download…';
+  try {
+    const response = await fetch('/api/model-catalog/install?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo, file: file.name }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      modelInstallStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    modelInstallStatus.textContent = 'Download started.';
+    startModelDownloadPolling();
+  } catch (error) {
+    modelInstallStatus.textContent = String(error);
+  }
+}
+
+function startModelDownloadPolling() {
+  if (!modelDownloadTimer) modelDownloadTimer = setInterval(refreshModelDownload, 1000);
+  refreshModelDownload();
+}
+
+function renderModelDownload(data) {
+  if (!data || data.state === 'idle') {
+    modelDownload.hidden = true;
+    return;
+  }
+  const state = data.state || '';
+  const total = Number(data.total) || 0;
+  const downloaded = Number(data.downloaded) || 0;
+  const percent = total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : 0;
+  modelDownload.hidden = false;
+  if (state === 'downloading') {
+    modelDownloadText.textContent = 'Downloading ' + data.file + '\n' + humanSize(downloaded) + ' / ' + humanSize(total) + ' (' + percent + '%)';
+    modelProgress.value = percent;
+    modelInstallStatus.textContent = '';
+  } else if (state === 'complete') {
+    modelDownloadText.textContent = 'Installed ' + data.file + ' (' + humanSize(total) + ').';
+    modelProgress.value = 100;
+    modelInstallStatus.textContent = 'Installed. Use Switch to this model above.';
+  } else if (state === 'cancelled') {
+    modelDownloadText.textContent = 'Download cancelled.';
+    modelProgress.value = 0;
+  } else if (state === 'error') {
+    modelDownloadText.textContent = 'Download failed: ' + (data.error || 'unknown error');
+    modelProgress.value = 0;
+    modelInstallStatus.textContent = data.error || '';
+  }
+}
+
+async function refreshModelDownload() {
+  try {
+    const response = await fetch('/api/model-catalog/status?token=' + encodeURIComponent(token));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      modelInstallStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    renderModelDownload(data);
+    if (data.state !== 'downloading') {
+      stopModelDownloadTimer();
+      if (data.state === 'complete') await refreshLocalModels();
+    }
+  } catch (error) {
+    modelInstallStatus.textContent = String(error);
+    stopModelDownloadTimer();
+  }
+}
+
+async function cancelModelDownload() {
+  try {
+    const response = await fetch('/api/model-catalog/cancel?token=' + encodeURIComponent(token), { method: 'POST' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      modelInstallStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    renderModelDownload(data);
+    stopModelDownloadTimer();
+  } catch (error) {
+    modelInstallStatus.textContent = String(error);
+  }
 }
 
 async function refreshLocalModels() {
@@ -938,9 +1165,32 @@ historyClose.addEventListener('click', () => setSidebar(false));
 sidebarCollapse.addEventListener('click', () => setSidebar(false));
 modelToggle.addEventListener('click', () => {
   modelPanel.hidden = !modelPanel.hidden;
-  if (!modelPanel.hidden) refreshLocalModels();
+  if (!modelPanel.hidden) {
+    refreshLocalModels();
+    refreshModelDownload();
+  } else {
+    stopModelDownloadTimer();
+  }
 });
-modelClose.addEventListener('click', () => { modelPanel.hidden = true; });
+modelClose.addEventListener('click', () => {
+  modelPanel.hidden = true;
+  stopModelDownloadTimer();
+});
+modelSearchButton.addEventListener('click', searchModelCatalog);
+modelSearch.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    searchModelCatalog();
+  }
+});
+modelFilesButton.addEventListener('click', () => loadModelFiles());
+modelRepo.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    loadModelFiles();
+  }
+});
+modelCancel.addEventListener('click', cancelModelDownload);
 newChatButton.addEventListener('click', newChat);
 historySearch.addEventListener('input', renderHistory);
 workspaceAdd.addEventListener('click', () => {
@@ -983,6 +1233,7 @@ document.addEventListener('keydown', (event) => {
     setSidebar(false);
   } else if (event.key === 'Escape' && !modelPanel.hidden) {
     modelPanel.hidden = true;
+    stopModelDownloadTimer();
   } else if (event.key === 'Escape' && sidebarVisible) {
     setSidebar(false);
   }

@@ -81,6 +81,11 @@ pub async fn run(
         .route("/api/models", get(models))
         .route("/api/local-models", get(local_models))
         .route("/api/local-models/select", post(select_local_model))
+        .route("/api/model-catalog/search", get(model_catalog_search))
+        .route("/api/model-catalog/files", get(model_catalog_files))
+        .route("/api/model-catalog/install", post(model_catalog_install))
+        .route("/api/model-catalog/status", get(model_catalog_status))
+        .route("/api/model-catalog/cancel", post(model_catalog_cancel))
         .route("/api/sessions", get(list_sessions))
         .route("/api/sessions/export", get(export_sessions))
         .route("/api/sessions/{id}/export", get(export_session))
@@ -242,6 +247,94 @@ async fn select_local_model(
         },
         Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("{error:#}") }))).into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct CatalogQuery {
+    query: Option<String>,
+    repo: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CatalogInstallBody {
+    repo: String,
+    file: String,
+}
+
+fn catalog_response(result: Result<String>) -> Response {
+    match result {
+        Ok(output) => match serde_json::from_str::<Value>(&output) {
+            Ok(value) => Json(value).into_response(),
+            Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("invalid model helper output: {error}") }))).into_response(),
+        },
+        Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
+}
+
+async fn model_catalog_search(
+    State(state): State<Arc<AppState>>,
+    Query(auth): Query<AuthQuery>,
+    Query(catalog): Query<CatalogQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &auth, &headers) {
+        return unauthorized();
+    }
+    let query = catalog.query.unwrap_or_default();
+    if query.trim().is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "query is required" }))).into_response();
+    }
+    catalog_response(modelctl(&["search", query.trim()]).await)
+}
+
+async fn model_catalog_files(
+    State(state): State<Arc<AppState>>,
+    Query(auth): Query<AuthQuery>,
+    Query(catalog): Query<CatalogQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &auth, &headers) {
+        return unauthorized();
+    }
+    let repo = catalog.repo.unwrap_or_default();
+    if repo.trim().is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "repo is required" }))).into_response();
+    }
+    catalog_response(modelctl(&["files", repo.trim()]).await)
+}
+
+async fn model_catalog_install(
+    State(state): State<Arc<AppState>>,
+    Query(auth): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<CatalogInstallBody>,
+) -> Response {
+    if !authorized(&state, &auth, &headers) {
+        return unauthorized();
+    }
+    catalog_response(modelctl(&["install", body.repo.trim(), body.file.trim()]).await)
+}
+
+async fn model_catalog_status(
+    State(state): State<Arc<AppState>>,
+    Query(auth): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &auth, &headers) {
+        return unauthorized();
+    }
+    catalog_response(modelctl(&["download-status"]).await)
+}
+
+async fn model_catalog_cancel(
+    State(state): State<Arc<AppState>>,
+    Query(auth): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &auth, &headers) {
+        return unauthorized();
+    }
+    catalog_response(modelctl(&["download-cancel"]).await)
 }
 
 async fn list_workspaces(
