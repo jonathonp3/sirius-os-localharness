@@ -151,9 +151,10 @@ model switch does not hit the systemd stop timeout.
 
 The model panel also includes **Install from Hugging Face**. Search for a
 GGUF repository, list its GGUF files, and install one after confirming the
-repo/file/size. Downloads run in the background, show progress, can be
-cancelled, verify the Hugging Face SHA-256 when present, and reject files that
-are not GGUF. Installed models are listed but never loaded automatically.
+repo/file/size. Downloads run in the background, show progress at the top of the Model panel,
+can be cancelled, and resume from a partial file if interrupted. They verify the
+Hugging Face SHA-256 when present and reject files that are not GGUF. Installed
+models are listed but never loaded automatically.
 
 For gated repositories, set `HF_TOKEN` in the host environment, or place a
 token in `~/.cache/huggingface/token`.

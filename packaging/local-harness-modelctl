@@ -12,6 +12,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 
 HOME = Path.home()
@@ -216,7 +217,13 @@ def cmd_install(args):
     repo = valid_repo(args.repo)
     current = read_download()
     if current.get("state") == "downloading":
-        fail("a model download is already running")
+        old_pid = int(current.get("pid") or 0)
+        if old_pid > 0:
+            try:
+                os.kill(old_pid, 0)
+                fail("a model download is already running")
+            except OSError:
+                pass
     files = repo_files(repo)
     target = next((item for item in files if item["name"] == args.file), None)
     if target is None:
@@ -229,24 +236,32 @@ def cmd_install(args):
     if size <= 0:
         fail("could not determine model size")
     MODELS.mkdir(parents=True, exist_ok=True)
+    part = destination.with_suffix(destination.suffix + ".part")
+    resume_from = part.stat().st_size if part.exists() else 0
+    if resume_from > size:
+        part.unlink(missing_ok=True)
+        resume_from = 0
+    needed = max(0, size - resume_from) + 1024 ** 3
     free = shutil.disk_usage(MODELS).free
-    if free < size + 1024 ** 3:
-        fail(f"not enough free disk space: need {size + 1024 ** 3} bytes")
+    if free < needed:
+        fail(f"not enough free disk space: need {needed} bytes")
+    token = uuid.uuid4().hex
     status = {
         "state": "downloading",
         "repo": repo,
         "file": target["name"],
         "destination": str(destination),
         "total": size,
-        "downloaded": 0,
+        "downloaded": resume_from,
         "sha256": target.get("sha256", ""),
         "pid": os.getpid(),
+        "token": token,
         "started": int(time.time()),
-        "message": "starting download",
+        "message": "resuming download" if resume_from else "starting download",
     }
     write_download(status)
     process = subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), "_download", repo, target["name"], str(size), target.get("sha256", ""), str(destination)],
+        [sys.executable, str(Path(__file__).resolve()), "_download", repo, target["name"], str(size), target.get("sha256", ""), str(destination), token],
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -286,14 +301,19 @@ def cmd_download_cancel(_args):
     pid = int(status.get("pid") or 0)
     if pid > 0:
         try:
-            os.kill(pid, signal.SIGTERM)
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+        except OSError:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+    destination = Path(str(status.get("destination") or ""))
+    if destination.name:
+        part = destination.with_suffix(destination.suffix + ".part")
+        try:
+            part.unlink()
         except OSError:
             pass
-    part = Path(str(status.get("destination") or "")) .with_suffix(Path(str(status.get("destination") or "")).suffix + ".part")
-    try:
-        part.unlink()
-    except OSError:
-        pass
     status["state"] = "cancelled"
     status["message"] = "download cancelled"
     write_download(status)
@@ -301,25 +321,48 @@ def cmd_download_cancel(_args):
 
 
 def cmd_download_worker(args):
+    download_token = args.token
+    current = read_download()
+    if current.get("token") != download_token:
+        return
     destination = Path(args.destination)
     part = destination.with_suffix(destination.suffix + ".part")
     url = f"{HF}/{urllib.parse.quote(args.repo, safe='/')}/resolve/main/{urllib.parse.quote(args.file, safe='/')}?download=true"
     headers = {"User-Agent": "local-harness-modelctl/1"}
-    token = hf_token()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    hf_token_value = hf_token()
+    if hf_token_value:
+        headers["Authorization"] = f"Bearer {hf_token_value}"
     total = int(args.size or 0)
+    existing = part.stat().st_size if part.exists() else 0
+    if existing > total:
+        part.unlink(missing_ok=True)
+        existing = 0
+    if existing:
+        headers["Range"] = f"bytes={existing}-"
     digest = hashlib.sha256()
-    downloaded = 0
+    downloaded = existing
     last = 0.0
     try:
         MODELS.mkdir(parents=True, exist_ok=True)
+        if existing:
+            with open(part, "rb") as resume:
+                while True:
+                    chunk = resume.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
         request = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(request, timeout=60) as response, open(part, "wb") as handle:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            append = existing > 0 and getattr(response, "status", 0) == 206
+            if existing and not append:
+                existing = 0
+                downloaded = 0
+                digest = hashlib.sha256()
             length = response.headers.get("Content-Length")
             if length and total <= 0:
-                total = int(length)
-            while True:
+                total = int(length) + existing
+            with open(part, "ab" if append else "wb") as handle:
+              while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:
                     break
@@ -330,9 +373,9 @@ def cmd_download_worker(args):
                 if now - last >= 1:
                     last = now
                     status = read_download()
-                    if status.get("state") == "cancelled":
+                    if status.get("token") != download_token or status.get("state") == "cancelled":
                         raise RuntimeError("cancelled")
-                    status.update({"pid": os.getpid(), "downloaded": downloaded, "total": total, "message": "downloading"})
+                    status.update({"pid": os.getpid(), "token": download_token, "downloaded": downloaded, "total": total, "message": "downloading"})
                     write_download(status)
         if args.sha256 and digest.hexdigest().lower() != args.sha256.lower():
             raise RuntimeError("SHA-256 checksum mismatch")
@@ -341,8 +384,11 @@ def cmd_download_worker(args):
                 raise RuntimeError("downloaded file is not GGUF")
         os.replace(part, destination)
         status = read_download()
+        if status.get("token") != download_token:
+            return
         status.update({
             "pid": os.getpid(),
+            "token": download_token,
             "state": "complete",
             "downloaded": downloaded,
             "total": total or downloaded,
@@ -356,7 +402,11 @@ def cmd_download_worker(args):
         except OSError:
             pass
         status = read_download()
-        status.update({"pid": os.getpid(), "state": "error", "error": str(error), "message": "download failed"})
+        if status.get("token") != download_token:
+            return
+        if status.get("state") == "cancelled":
+            return
+        status.update({"pid": os.getpid(), "token": download_token, "state": "error", "error": str(error), "message": "download failed"})
         write_download(status)
 
 
@@ -437,6 +487,7 @@ def main():
     worker.add_argument("size")
     worker.add_argument("sha256")
     worker.add_argument("destination")
+    worker.add_argument("token")
     args = parser.parse_args()
     if args.command == "list":
         cmd_list(args)

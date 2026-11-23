@@ -268,6 +268,11 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
     <button id="model-close" type="button" title="Close models">×</button>
   </div>
   <div id="model-status">Loading models…</div>
+    <div id="model-download" hidden>
+      <div id="model-download-text"></div>
+      <progress id="model-progress" max="100" value="0"></progress>
+      <button id="model-cancel" type="button">Cancel download</button>
+    </div>
   <div id="model-list"></div>
   <div class="model-install">
     <div class="model-install-title">Install from Hugging Face</div>
@@ -281,11 +286,6 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
       <button id="model-files-btn" type="button">Files</button>
     </div>
     <div id="model-files"></div>
-    <div id="model-download" hidden>
-      <div id="model-download-text"></div>
-      <progress id="model-progress" max="100" value="0"></progress>
-      <button id="model-cancel" type="button">Cancel download</button>
-    </div>
     <div id="model-install-status"></div>
   </div>
 </aside>
@@ -653,6 +653,7 @@ function renderModelDownload(data) {
   const downloaded = Number(data.downloaded) || 0;
   const percent = total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : 0;
   modelDownload.hidden = false;
+  modelCancel.hidden = state !== 'downloading';
   if (state === 'downloading') {
     modelDownloadText.textContent = 'Downloading ' + data.file + '\n' + humanSize(downloaded) + ' / ' + humanSize(total) + ' (' + percent + '%)';
     modelProgress.value = percent;
