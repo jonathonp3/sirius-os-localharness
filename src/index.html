@@ -166,7 +166,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 </style>
 <link rel="stylesheet" href="/assets/highlight.css">
 </head>
-<body class="sidebar-open">
+<body>
 <header><h1>Local Harness</h1>
 <button id="history-toggle" type="button" title="Chat history">History</button>
 <select id="theme" title="Theme">
@@ -184,7 +184,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <option value="1.5">150%</option>
 </select>
 <span id="status">ready</span></header>
-<aside id="history-panel">
+<aside id="history-panel" hidden>
   <div class="workspace-head">
     <strong>Workspaces</strong>
     <button id="workspace-add" type="button" title="Create workspace">+</button>
@@ -360,38 +360,26 @@ function downloadText(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-async function exportSession(id) {
-  try {
-    const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/export?token=' + encodeURIComponent(token));
-    if (!response.ok) {
-      add('error', await response.text());
-      return;
-    }
-    downloadText('local-harness-' + id + '.txt', await response.text());
-  } catch (error) {
-    add('error', String(error));
-  }
+function downloadUrl(url) {
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = '';
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
-async function exportAll() {
-  try {
-    if (selectMode && selectedSessions.size) {
-      const parts = [];
-      for (const id of selectedSessions) {
-        const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/export?token=' + encodeURIComponent(token));
-        if (response.ok) parts.push(await response.text());
-      }
-      downloadText('local-harness-selected.txt', parts.join('\n\n') || 'No chats selected.\n');
-      return;
-    }
-    const response = await fetch('/api/sessions/export?token=' + encodeURIComponent(token) + '&workspace=' + encodeURIComponent(currentWorkspaceId));
-    if (!response.ok) {
-      add('error', await response.text());
-      return;
-    }
-    downloadText('local-harness-chats.txt', await response.text());
-  } catch (error) {
-    add('error', String(error));
+function exportSession(id) {
+  downloadUrl('/api/sessions/' + encodeURIComponent(id) + '/export?token=' + encodeURIComponent(token));
+}
+
+function exportAll() {
+  const base = '/api/sessions/export?token=' + encodeURIComponent(token);
+  if (selectMode && selectedSessions.size) {
+    downloadUrl(base + '&ids=' + encodeURIComponent(Array.from(selectedSessions).join(',')));
+  } else {
+    downloadUrl(base + '&workspace=' + encodeURIComponent(currentWorkspaceId));
   }
 }
 
@@ -784,9 +772,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !historyPanel.hidden) setSidebar(false);
 });
 
-setSidebar(true);
-refreshWorkspaces();
-refreshSessions();
+setSidebar(false);
 
 if (!token) setStatus('missing token in URL', true);
 

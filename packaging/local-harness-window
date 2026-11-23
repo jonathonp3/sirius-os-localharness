@@ -169,6 +169,26 @@ def main():
         manager.register_script_message_handler("clipboard")
         manager.connect("script-message-received::clipboard", on_clipboard_message)
         webview = WebKit.WebView(user_content_manager=manager)
+
+        def on_download(_webview, download):
+            try:
+                destination = download.get_destination()
+                if not destination:
+                    destination = str(
+                        Path.home() / "Downloads"
+                        / f"local-harness-export-{int(time.time())}.txt"
+                    )
+                if destination.startswith("file://"):
+                    destination = destination[7:]
+                path = Path(destination)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                download.set_allow_overwrite(True)
+                download.set_destination(str(path))
+                print(f"download: {path}", flush=True)
+            except Exception as error:
+                print(f"download failed: {error}", flush=True)
+
+        webview.connect("download-started", on_download)
         # The GTK context menu has no spelling dictionary; the page provides
         # its own menu (spelling + basic edit actions) via the DOM event.
         webview.connect("context-menu", lambda *args: True)

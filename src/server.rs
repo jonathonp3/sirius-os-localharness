@@ -281,7 +281,7 @@ async fn export_sessions(
     Query(query): Query<ExportQuery>,
     headers: HeaderMap,
 ) -> Response {
-    let ExportQuery { token, workspace } = query;
+    let ExportQuery { token, workspace, ids } = query;
     let auth = AuthQuery { token };
     if !authorized(&state, &auth, &headers) {
         return unauthorized();
@@ -290,10 +290,18 @@ async fn export_sessions(
         Ok(sessions) => sessions,
         Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response(),
     };
+    let selected: Option<Vec<String>> = ids.map(|ids| {
+        ids.split(',').map(str::trim).filter(|id| !id.is_empty()).map(str::to_string).collect()
+    });
     let mut output = String::new();
     for summary in sessions {
         if let Some(workspace) = &workspace {
             if &summary.workspace != workspace {
+                continue;
+            }
+        }
+        if let Some(selected) = &selected {
+            if !selected.iter().any(|id| id == &summary.id) {
                 continue;
             }
         }
@@ -320,6 +328,7 @@ struct WorkspaceBody {
 struct ExportQuery {
     token: Option<String>,
     workspace: Option<String>,
+    ids: Option<String>,
 }
 
 async fn list_sessions(
