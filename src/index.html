@@ -47,8 +47,8 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .tool-card pre { margin:0; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; max-height:320px; overflow:auto; white-space:pre-wrap; }
 .tool-copy { float:none; text-transform:none; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:5px; font-size:14px; padding:4px 10px; cursor:pointer; }
 .approval-card.resolved { opacity:.85; }
-.approval-card { align-self:flex-start; width:min(760px,92%); background:#211a12; border:1px solid #6b4e1f; border-radius:8px; padding:10px; }
-.approval-title { color:#f6c177; font-weight:600; margin-bottom:4px; }
+.approval-card { align-self:flex-start; width:min(760px,92%); background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px; color:var(--text); }
+.approval-title { color:var(--accent); font-weight:600; margin-bottom:4px; }
 .approval-reason { color:var(--muted); font-size:13px; margin-bottom:6px; }
 .approval-card pre { margin:0 0 8px; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border); border-radius:6px; padding:8px; white-space:pre-wrap; max-height:240px; overflow:auto; }
 .approval-actions { display:flex; gap:8px; }
@@ -171,10 +171,13 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <header><h1>Local Harness</h1>
 <button id="history-toggle" type="button" title="Show or hide workspaces and chats">☰ Chats</button>
 <select id="theme" title="Theme">
-<option value="dark">Dark</option>
+<option value="xterm">Xterm</option>
 <option value="midnight">Midnight</option>
 <option value="solarized">Solarized</option>
 <option value="golden-sand">Golden Sand</option>
+<option value="ember">Ember Orange</option>
+<option value="crimson">Crimson</option>
+<option value="cobalt">Cobalt Blue</option>
 </select>
 <select id="scale" title="Interface scale">
 <option value="0.8">80%</option>
@@ -204,6 +207,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
     <strong>Chats</strong>
     <div class="history-head-actions">
       <button id="new-chat" type="button">New</button>
+      <button id="sidebar-collapse" type="button" title="Collapse sidebar">«</button>
       <button id="history-close" type="button" title="Close sidebar">×</button>
     </div>
   </div>
@@ -243,6 +247,7 @@ const statusEl = document.getElementById('status');
 const historyToggle = document.getElementById('history-toggle');
 const historyPanel = document.getElementById('history-panel');
 const historyClose = document.getElementById('history-close');
+const sidebarCollapse = document.getElementById('sidebar-collapse');
 const historySearch = document.getElementById('history-search');
 const historyList = document.getElementById('history-list');
 const newChatButton = document.getElementById('new-chat');
@@ -788,6 +793,7 @@ function openHistory() {
 
 historyToggle.addEventListener('click', () => setSidebar(!sidebarVisible));
 historyClose.addEventListener('click', () => setSidebar(false));
+sidebarCollapse.addEventListener('click', () => setSidebar(false));
 newChatButton.addEventListener('click', newChat);
 historySearch.addEventListener('input', renderHistory);
 workspaceAdd.addEventListener('click', () => {
@@ -842,16 +848,29 @@ if (!token) setStatus('missing token in URL', true);
 const darkCode = { bg: '#0d0d0d', text: '#e6e6e6', comment: '#8b949e', keyword: '#ff7b72', string: '#a5d6ff', number: '#79c0ff', title: '#d2a8ff', type: '#ffa657', builtin: '#79c0ff', meta: '#d2a8ff', attr: '#79c0ff', tag: '#7ee787', regexp: '#ffa657', variable: '#ffa657', addition: '#aff5b4', deletion: '#ffdcd7' };
 
 const themes = {
-  dark: { bg: '#111111', panel: '#1a1a1a', text: '#e8e8e8', muted: '#9a9a9a', border: '#2a2a2a', accent: '#6ea8fe', scheme: 'dark', ok: '#68d391', code: darkCode },
+  xterm: { bg: '#000000', panel: '#101010', text: '#e5e5e5', muted: '#a0a0a0', border: '#303030', accent: '#5c9cff', scheme: 'dark', ok: '#00cd00', code: {
+    bg: '#000000', text: '#e5e5e5', comment: '#808080', keyword: '#cd0000', string: '#00cd00', number: '#cdcd00', title: '#5c9cff', type: '#cdcd00', builtin: '#00cdcd', meta: '#cd00cd', attr: '#cdcd00', tag: '#00cdcd', regexp: '#cd0000', variable: '#e5e5e5', addition: '#00cd00', deletion: '#cd0000'
+  } },
   midnight: { bg: '#0b1220', panel: '#111a2b', text: '#e6edf7', muted: '#8fa3bf', border: '#1f2b40', accent: '#6ea8fe', scheme: 'dark', ok: '#68d391', code: darkCode },
-  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59', accent: '#268BD2', scheme: 'dark', ok: '#859900', code: darkCode },
+  solarized: { bg: '#002b36', panel: '#073642', text: '#eee8d5', muted: '#93a1a1', border: '#0f4b59', accent: '#cb4b16', scheme: 'dark', ok: '#859900', code: {
+    bg: '#002b36', text: '#eee8d5', comment: '#586e75', keyword: '#cb4b16', string: '#2aa198', number: '#d33682', title: '#268bd2', type: '#b58900', builtin: '#2aa198', meta: '#6c71c4', attr: '#b58900', tag: '#268bd2', regexp: '#dc322f', variable: '#eee8d5', addition: '#859900', deletion: '#dc322f'
+  } },
   'golden-sand': { bg: '#F8E7B7', panel: '#F6EFDC', text: '#073642', muted: '#586E75', border: '#D9C79C', accent: '#268BD2', scheme: 'light', ok: '#2f6b3a', code: {
     bg: '#F6EFDC', text: '#073642', comment: '#657B83', keyword: '#CB4B16', string: '#2AA198', number: '#2AA198', title: '#268BD2', type: '#B58900', builtin: '#268BD2', meta: '#6C71C4', attr: '#B58900', tag: '#268BD2', regexp: '#DC322F', variable: '#073642', addition: '#859900', deletion: '#DC322F'
+  } },
+  ember: { bg: '#14100b', panel: '#1f1810', text: '#f4e7d3', muted: '#bda98c', border: '#3a2c1c', accent: '#ff9a4d', scheme: 'dark', ok: '#8fbf4f', code: {
+    bg: '#14100b', text: '#f4e7d3', comment: '#9a866d', keyword: '#ff8c42', string: '#b5d56a', number: '#ffd166', title: '#6ea8fe', type: '#ffb86b', builtin: '#4ec9b0', meta: '#c792ea', attr: '#ffd166', tag: '#6ea8fe', regexp: '#ff5c5c', variable: '#f4e7d3', addition: '#8fbf4f', deletion: '#ff5c5c'
+  } },
+  crimson: { bg: '#160b0f', panel: '#211015', text: '#f3e1e5', muted: '#c59aa8', border: '#3b1c24', accent: '#ff5c7a', scheme: 'dark', ok: '#7fbf7f', code: {
+    bg: '#160b0f', text: '#f3e1e5', comment: '#9a6f7c', keyword: '#ff5c7a', string: '#e6b45a', number: '#ffd166', title: '#6ea8fe', type: '#ff9a8a', builtin: '#4ec9b0', meta: '#c792ea', attr: '#ffd166', tag: '#6ea8fe', regexp: '#ff5c5c', variable: '#f3e1e5', addition: '#7fbf7f', deletion: '#ff5c5c'
+  } },
+  cobalt: { bg: '#07111f', panel: '#0d1b2e', text: '#dce8ff', muted: '#8fa6c9', border: '#1c3150', accent: '#4ea1ff', scheme: 'dark', ok: '#5fbf8f', code: {
+    bg: '#07111f', text: '#dce8ff', comment: '#6f87a8', keyword: '#4ea1ff', string: '#7fd6a8', number: '#ffd166', title: '#8fc7ff', type: '#ffa657', builtin: '#4ec9b0', meta: '#c792ea', attr: '#ffd166', tag: '#4ea1ff', regexp: '#ff6b6b', variable: '#dce8ff', addition: '#7fd6a8', deletion: '#ff6b6b'
   } }
 };
 
 function applyTheme(name) {
-  if (!themes[name]) name = 'dark';
+  if (!themes[name]) name = 'xterm';
   const theme = themes[name];
   const root = document.documentElement;
   root.style.setProperty('--bg', theme.bg);
@@ -871,7 +890,7 @@ function applyTheme(name) {
 }
 
 themeEl.addEventListener('change', () => applyTheme(themeEl.value));
-applyTheme(localStorage.getItem('localHarnessTheme') || 'dark');
+applyTheme(localStorage.getItem('localHarnessTheme') || 'xterm');
 
 function applyScale(value) {
   const scale = parseFloat(value) || 1;

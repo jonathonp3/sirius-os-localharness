@@ -349,12 +349,15 @@ command (`total: command not found`, etc.). Use **copy command** to re-run, or
 The header theme selector switches background/palette presets and remembers the
 choice in `localStorage`:
 
-- Dark
+- **Xterm** — default; classic xterm black/ANSI palette
 - Midnight
-- Solarized
+- **Solarized** — actual Solarized palette (orange/red/blue/green syntax)
 - **Golden Sand** — derived from `themes/solarized-light-golden-sand.xml`
   (GtkSourceView scheme): golden-sand background, dark base02 text, Solarized
-  accent colors, and matching highlight.js token colors.
+  accent colors, and matching highlight.js token colors
+- **Ember Orange**
+- **Crimson**
+- **Cobalt Blue**
 
 The selected theme also themes code blocks and tool cards, not just the page
 background. `themes/README.md` documents the XML-to-UI mapping.
