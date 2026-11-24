@@ -159,6 +159,11 @@ models are listed but never loaded automatically.
 For gated repositories, set `HF_TOKEN` in the host environment, or place a
 token in `~/.cache/huggingface/token`.
 
+Each model card has an editable **tag** field for purpose labels such as
+`PhotoCraft`, `Coding`, or `Fast chat`. Tags are comma-separated, support
+adding/renaming/removing by editing the list, and are stored in the app data
+directory as `model-tags.json`. Tags are labels only; they do not switch models.
+
 The host helper and selected-model wrapper are installed in `~/.local/bin`:
 
 ```text

@@ -83,6 +83,7 @@ pub async fn run(
         .route("/api/health", get(health))
         .route("/api/models", get(models))
         .route("/api/local-models", get(local_models))
+        .route("/api/local-models/tags", post(set_local_model_tags))
         .route("/api/local-models/select", post(select_local_model))
         .route("/api/model-catalog/search", get(model_catalog_search))
         .route("/api/model-catalog/files", get(model_catalog_files))
@@ -242,6 +243,28 @@ async fn modelctl(args: &[&str]) -> Result<String> {
     Ok(stdout)
 }
 
+fn model_tags_path(state: &AppState) -> PathBuf {
+    state.data_dir.join("model-tags.json")
+}
+
+fn read_model_tags(state: &AppState) -> HashMap<String, Vec<String>> {
+    std::fs::read_to_string(model_tags_path(state))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn write_model_tags(state: &AppState, tags: &HashMap<String, Vec<String>>) -> Result<()> {
+    let path = model_tags_path(state);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let temp = path.with_extension("json.tmp");
+    std::fs::write(&temp, serde_json::to_vec_pretty(tags)?)?;
+    std::fs::rename(temp, path)?;
+    Ok(())
+}
+
 async fn local_models(
     State(state): State<Arc<AppState>>,
     Query(query): Query<AuthQuery>,
@@ -252,11 +275,64 @@ async fn local_models(
     }
     match modelctl(&["list"]).await {
         Ok(output) => match serde_json::from_str::<Value>(&output) {
-            Ok(value) => Json(value).into_response(),
+            Ok(mut value) => {
+                let tags = read_model_tags(&state);
+                if let Some(models) = value.get_mut("models").and_then(Value::as_array_mut) {
+                    for model in models {
+                        let path = model.get("path").and_then(Value::as_str).unwrap_or_default();
+                        let model_tags = tags.get(path).cloned().unwrap_or_default();
+                        model["tags"] = json!(model_tags);
+                    }
+                }
+                Json(value).into_response()
+            }
             Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("invalid model helper output: {error}") }))).into_response(),
         },
         Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("{error:#}") }))).into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct ModelTagsBody {
+    path: String,
+    tags: Vec<String>,
+}
+
+async fn set_local_model_tags(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<ModelTagsBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let path = body.path.trim();
+    if !path.contains("/.local/share/llama.cpp/models/") || !std::path::Path::new(path).is_file() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "unknown model path" }))).into_response();
+    }
+    let mut seen = HashSet::new();
+    let mut clean = Vec::new();
+    for raw in body.tags.iter().take(8) {
+        let tag: String = raw.trim().chars().take(40).collect();
+        if tag.is_empty() {
+            continue;
+        }
+        let key = tag.to_lowercase();
+        if seen.insert(key) {
+            clean.push(tag);
+        }
+    }
+    let mut tags = read_model_tags(&state);
+    if clean.is_empty() {
+        tags.remove(path);
+    } else {
+        tags.insert(path.to_string(), clean.clone());
+    }
+    if let Err(error) = write_model_tags(&state, &tags) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("saving tags: {error}") }))).into_response();
+    }
+    Json(json!({ "path": path, "tags": clean })).into_response()
 }
 
 #[derive(Deserialize)]

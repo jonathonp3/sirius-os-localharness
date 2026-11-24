@@ -129,6 +129,9 @@ body.sidebar-open { padding-left:350px; }
 .model-badges { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:5px; }
 .model-badge { font-size:12px; border:1px solid var(--border); border-radius:10px; padding:2px 7px; color:var(--muted); }
 .model-badge.live { color:var(--ok); border-color:var(--ok); }
+.model-tags { display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin:3px 0 6px; }
+.model-tag { font-size:12px; border:1px solid var(--accent); color:var(--accent); border-radius:10px; padding:2px 7px; }
+.model-tag-edit { background:transparent; border:1px dashed var(--border); color:var(--muted); border-radius:10px; font-size:11px; padding:2px 7px; min-height:0; min-width:0; }
 .model-actions { display:flex; gap:5px; }
 .model-actions button { background:var(--accent); color:#08111f; border:0; border-radius:5px; min-height:26px; min-width:0; padding:0 10px; font-size:12px; }
 .model-actions button:disabled { opacity:.5; }
@@ -859,6 +862,21 @@ function renderLocalModels(data) {
       badge.textContent = 'selected';
       badges.appendChild(badge);
     }
+    const tags = document.createElement('div');
+    tags.className = 'model-tags';
+    for (const tag of model.tags || []) {
+      const tagEl = document.createElement('span');
+      tagEl.className = 'model-tag';
+      tagEl.textContent = tag;
+      tags.appendChild(tagEl);
+    }
+    const tagEdit = document.createElement('button');
+    tagEdit.type = 'button';
+    tagEdit.className = 'model-tag-edit';
+    tagEdit.textContent = (model.tags || []).length ? 'edit tags' : '+ tag';
+    tagEdit.title = 'Add, rename, or remove purpose tags';
+    tagEdit.addEventListener('click', () => editModelTags(model));
+    tags.appendChild(tagEdit);
     const actions = document.createElement('div');
     actions.className = 'model-actions';
     const use = document.createElement('button');
@@ -867,8 +885,33 @@ function renderLocalModels(data) {
     use.disabled = model.path === selected.path;
     use.addEventListener('click', () => switchModel(model));
     actions.appendChild(use);
-    item.append(name, meta, badges, actions);
+    item.append(name, meta, badges, tags, actions);
     modelList.appendChild(item);
+  }
+}
+
+async function editModelTags(model) {
+  const current = (model.tags || []).join(', ');
+  const raw = prompt(
+    'Purpose tags for ' + (model.name || model.alias) + '\nComma-separated, e.g. PhotoCraft, Coding:',
+    current
+  );
+  if (raw === null) return;
+  const tags = raw.split(',').map((tag) => tag.trim()).filter(Boolean);
+  try {
+    const response = await fetch('/api/local-models/tags?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: model.path, tags }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      modelStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    await refreshLocalModels();
+  } catch (error) {
+    modelStatus.textContent = String(error);
   }
 }
 
