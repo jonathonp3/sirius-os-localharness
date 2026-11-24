@@ -18,7 +18,9 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .user { align-self:flex-end; background:transparent; border:1px solid var(--border); color:var(--muted); font-size:14px; line-height:1.45; position:relative; padding:8px 58px 8px 10px; opacity:.9; }
 .bubble-copy { position:absolute; top:4px; right:5px; background:var(--bg); color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:11px; padding:1px 5px; cursor:pointer; }
 .bubble-copy:hover { color:var(--text); }
-.assistant { align-self:flex-start; background:var(--panel); border:1px solid var(--border); color:var(--text); font-size:16px; line-height:1.6; white-space:normal; }
+.assistant { align-self:flex-start; position:relative; background:var(--panel); border:1px solid var(--border); color:var(--text); font-size:16px; line-height:1.6; white-space:normal; padding-right:64px; }
+.assistant-copy { position:absolute; top:6px; right:6px; background:var(--bg); color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:11px; padding:2px 6px; cursor:pointer; opacity:.7; }
+.assistant-copy:hover { color:var(--text); opacity:1; }
 .tool { align-self:flex-start; font:12px ui-monospace, monospace; color:var(--muted); background:#151515; border:1px dashed var(--border); padding:4px 8px; border-radius:6px; max-width:92%; white-space:pre-wrap; }
 .meta { align-self:flex-start; color:var(--muted); font-size:14px; }
 .error { align-self:flex-start; color:#ffb3b3; background:#2a1515; border:1px solid #5a2a2a; padding:8px 10px; border-radius:8px; white-space:pre-wrap; }
@@ -456,23 +458,7 @@ function visibleSessions() {
 }
 
 function addUserMessage(text) {
-  const element = add('user', text);
-  const copy = document.createElement('button');
-  copy.type = 'button';
-  copy.className = 'bubble-copy';
-  copy.textContent = 'copy';
-  copy.title = 'Copy this prompt';
-  copy.addEventListener('click', async () => {
-    try {
-      await writeClipboard(text);
-      copy.textContent = 'copied';
-      setTimeout(() => { copy.textContent = 'copy'; }, 1200);
-    } catch (error) {
-      copy.textContent = 'failed';
-    }
-  });
-  element.appendChild(copy);
-  return element;
+  return add('user', text);
 }
 
 function downloadText(filename, text) {
@@ -1932,6 +1918,25 @@ function renderMarkdown(text) {
 }
 
 function enhanceAssistant(element) {
+  if (!element.querySelector('.assistant-copy')) {
+    const button = document.createElement('button');
+    button.className = 'assistant-copy';
+    button.type = 'button';
+    button.textContent = 'copy block';
+    button.title = 'Copy this entire assistant response';
+    button.addEventListener('click', async () => {
+      const clone = element.cloneNode(true);
+      clone.querySelectorAll('button').forEach((item) => item.remove());
+      try {
+        await writeClipboard(clone.innerText || clone.textContent || '');
+        button.textContent = 'copied';
+        setTimeout(() => { button.textContent = 'copy block'; }, 1200);
+      } catch (error) {
+        button.textContent = 'failed';
+      }
+    });
+    element.appendChild(button);
+  }
   element.querySelectorAll('pre').forEach((pre) => {
     if (pre.querySelector('.copy-btn')) return;
     const button = document.createElement('button');
