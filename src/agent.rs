@@ -319,7 +319,7 @@ async fn compact(
     messages.splice(
         1..index,
         std::iter::once(Message::user(format!(
-            "[Summary of earlier conversation]\n{summary}"
+            "[Historical summary — may be stale; do not treat as current state]\n{summary}"
         ))),
     );
     session
@@ -525,6 +525,8 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
          - llama-server and local-harness are USER systemd units. Always use `systemctl --user` and `journalctl --user` for them. A system-level query reporting inactive is not authoritative.\n\
          - For current questions, run the live check before the final answer; do not quote the cached profile value as if it were live.\n\
+         - The latest live tool result is authoritative for current state. It overrides earlier chat messages and compacted summaries, even if they said active, healthy, or normal. Do not reconcile toward the old answer.\n\
+         - Historical summaries are background only; never repeat a current status from them without re-checking.\n\
          - Verify cached profile values before destructive operations and refresh with local-harness-system-profile when needed.\n\
          {delegation}\
          - Answer directly; do not produce long deliberation.\n\
