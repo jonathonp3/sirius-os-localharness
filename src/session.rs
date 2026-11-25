@@ -80,6 +80,19 @@ impl Session {
                 format!("decoding message in {} line {}", self.file.display(), index + 1)
             })?);
         }
+        // Tool output is kept in the session/UI, but a resumed chat must not
+        // send an arbitrarily large dump back to the model.
+        for message in &mut messages {
+            if message.role == "tool" {
+                if let Some(content) = &mut message.content {
+                    if content.chars().count() > 12_000 {
+                        let mut trimmed: String = content.chars().take(12_000).collect();
+                        trimmed.push_str("\n...[trimmed to fit the local context budget]");
+                        *content = trimmed;
+                    }
+                }
+            }
+        }
         // An interrupted run can leave a tool call without its result; a resumed
         // conversation must not send that to the model.
         while let Some(last) = messages.last() {
