@@ -480,7 +480,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - Read a file before editing it.\n\
          - Shell commands must be non-interactive.\n\
          - Linux administration is part of your job. Inspect the live system before changes (uname, lspci, df, free, systemctl, journalctl), prefer reversible actions, and ask before reboots, partitioning, or package removal.\n\
-         - Local Harness runs inside a Flatpak sandbox. For host administration, use `flatpak-spawn --host <command>` for systemctl, journalctl, podman, flatpak, rpm-ostree, host df, and host paths. A sandbox failure does not mean the host tool is missing.\n\
+         - Local Harness runs inside a Flatpak sandbox. Use the host_bash tool for systemctl, journalctl, podman, flatpak, rpm-ostree, host df, host network, and host paths. Use bash only for sandbox/workspace commands. A sandbox failure does not mean the host tool is missing.\n\
          - Use the persistent system profile for hardware, OS, and session facts. Verify live state only when the question depends on current values.\n\
          - Do not require dmidecode or sensors. Read motherboard data from /sys/class/dmi/id/board_* and temperatures from /sys/class/hwmon/* or use the profile.\n\
          - AMD VRAM files are /sys/class/drm/card*/device/mem_info_vram_total and mem_info_vram_used. There is no file named mem_info_vram.\n\

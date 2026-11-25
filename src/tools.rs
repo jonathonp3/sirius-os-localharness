@@ -106,6 +106,7 @@ impl ToolSet {
         }
         if self.policy.allows_shell() {
             names.push("bash".to_string());
+            names.push("host_bash".to_string());
             for plugin in self.plugins.iter() {
                 names.push(plugin_tool_name(&plugin.name));
             }
@@ -202,6 +203,18 @@ impl ToolSet {
                     }
                 }
             }));
+            definitions.push(json!({
+                "type": "function",
+                "function": {
+                    "name": "host_bash",
+                    "description": "Run a non-interactive bash command on the host, outside the Flatpak sandbox. Use for systemctl, journalctl, podman, flatpak, rpm-ostree, and host hardware or network inspection.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": { "command": { "type": "string", "description": "Command to run with host bash -lc" } },
+                        "required": ["command"]
+                    }
+                }
+            }));
             for plugin in self.plugins.iter() {
                 definitions.push(json!({
                     "type": "function",
@@ -257,12 +270,12 @@ impl ToolSet {
                 let content = string_arg(&arguments, "content")?;
                 return Ok(format!("DRY-RUN — NOT EXECUTED. Would write {} bytes to {path}. Nothing was changed.", content.len()));
             }
-            if name == "bash" {
+            if name == "bash" || name == "host_bash" {
                 if !self.policy.allows_shell() {
                     bail!("bash is disabled by the tool policy (use --allow-shell or --tool-policy full)");
                 }
                 let command = string_arg(&arguments, "command")?;
-                return Ok(format!("DRY-RUN — NOT EXECUTED. Would run: {command}. Nothing was run."));
+                return Ok(format!("DRY-RUN — NOT EXECUTED. Would run on {}: {command}. Nothing was run.", if name == "host_bash" { "host" } else { "sandbox" }));
             }
             if name.starts_with("plugin__") || name.starts_with("mcp__") {
                 if !self.policy.allows_shell() {
@@ -352,23 +365,25 @@ impl ToolSet {
                 entries.sort();
                 Ok(truncate(&entries.join("\n")))
             }
-            "bash" => {
+            "bash" | "host_bash" => {
                 if !self.policy.allows_shell() {
                     bail!("bash is disabled by the tool policy (use --allow-shell or --tool-policy full)");
                 }
+                let host = name == "host_bash";
                 let command = string_arg(&arguments, "command")?;
+                if let Some(word) = first_command_word(&command) {
+                    if !command_available(&word, host).await? {
+                        bail!(
+                            "command `{word}` is not available on the {}. Do not retry it blindly; use the system profile or {}.",
+                            if host { "host" } else { "sandbox" },
+                            if host { "a different host tool" } else { "host_bash for host commands" }
+                        );
+                    }
+                }
                 let timeout = bash_timeout();
-                let output = tokio::time::timeout(
-                    timeout,
-                    tokio::process::Command::new("bash")
-                        .arg("-lc")
-                        .arg(&command)
-                        .current_dir(&self.root)
-                        .kill_on_drop(true)
-                        .output(),
-                )
-                .await
-                .with_context(|| format!("bash timed out after {} s", timeout.as_secs()))??;
+                let output = tokio::time::timeout(timeout, run_bash(&command, host, &self.root))
+                    .await
+                    .with_context(|| format!("bash timed out after {} s", timeout.as_secs()))??;
                 Ok(render_output(&output))
             }
             other => bail!("unknown tool `{other}`"),
@@ -474,6 +489,49 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+fn first_command_word(command: &str) -> Option<String> {
+    let first = command.split_whitespace().next()?;
+    if first.is_empty() || first.contains([';', '|', '&', '<', '>', '(', ')', '$', '`', '=', '{', '}']) {
+        return None;
+    }
+    const KEYWORDS: &[&str] = &[
+        "for", "while", "if", "then", "do", "case", "function", "fi", "done", "else", "elif",
+        "cd", "export", "source", ".", ":", "true", "false", "echo", "printf", "test", "[", "[[",
+    ];
+    if KEYWORDS.contains(&first) {
+        return None;
+    }
+    Some(first.to_string())
+}
+
+async fn command_available(word: &str, host: bool) -> Result<bool> {
+    let mut command = if host && std::env::var_os("FLATPAK_ID").is_some() {
+        let mut command = tokio::process::Command::new("flatpak-spawn");
+        command.arg("--host").arg("bash").arg("-lc");
+        command
+    } else {
+        let mut command = tokio::process::Command::new("bash");
+        command.arg("-lc");
+        command
+    };
+    command.arg("command -v -- \"$1\" >/dev/null 2>&1").arg("_").arg(word);
+    let status = command.kill_on_drop(true).status().await?;
+    Ok(status.success())
+}
+
+async fn run_bash(command_text: &str, host: bool, root: &Path) -> Result<std::process::Output> {
+    let mut command = if host && std::env::var_os("FLATPAK_ID").is_some() {
+        let mut command = tokio::process::Command::new("flatpak-spawn");
+        command.arg("--host").arg("bash").arg("-lc").arg(command_text);
+        command
+    } else {
+        let mut command = tokio::process::Command::new("bash");
+        command.arg("-lc").arg(command_text).current_dir(root);
+        command
+    };
+    command.kill_on_drop(true).output().await.context("running bash")
+}
+
 fn render_output(output: &std::process::Output) -> String {
     let mut text = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -522,7 +580,7 @@ fn truncate(text: &str) -> String {
 
 /// Conservative destructive-command detection for the bash tool.
 pub fn destructive_reason(name: &str, arguments: &str) -> Option<String> {
-    if name != "bash" {
+    if name != "bash" && name != "host_bash" {
         return None;
     }
     let value: Value = serde_json::from_str(arguments).ok()?;
