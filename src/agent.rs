@@ -437,10 +437,19 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
     } else {
         "- You are a subagent: return a concise, self-contained result and do not ask follow-up questions.\n"
     };
+    let profile_path = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .map(|home| home.join(".config/local-harness/system-profile.md"));
+    let profile = profile_path
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .filter(|text| !text.trim().is_empty())
+        .map(|text| truncate(&text, 3500))
+        .unwrap_or_else(|| "No system profile collected yet. Run local-harness-system-profile to collect one.".to_string());
     format!(
         "{role} `{}`.\n\
          Tools available: {}.\n\
          Use a tool whenever the task requires reading, writing, listing, or running something; otherwise answer directly.\n\
+         Persistent system context (refreshed periodically, independent of chats):\n{profile}\n\
          Rules:\n\
          - Keep answers short and concrete. The user runs a local 9B model at about 10 tokens per second.\n\
          - Never invent tool output. If a tool fails, report the error.\n\
@@ -449,6 +458,8 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - If a tool fails because of a file type or format error, stop and ask. Never create a replacement canvas, substitute another task, or improvise a design after such a failure.\n\
          - Read a file before editing it.\n\
          - Shell commands must be non-interactive.\n\
+         - Linux administration is part of your job. Inspect the live system before changes (uname, lspci, df, free, systemctl, journalctl), prefer reversible actions, and ask before reboots, partitioning, or package removal.\n\
+         - The system profile is cached context, not proof of current state. Verify it before destructive operations and refresh it with local-harness-system-profile when needed.\n\
          {delegation}\
          - Answer directly; do not produce long deliberation.\n\
          Formatting:\n\

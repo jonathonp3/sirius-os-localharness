@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""Collect a privacy-safe host profile for Local Harness."""
+
+from __future__ import annotations
+
+import json
+import os
+import platform
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+HOME = Path.home()
+OUT = Path(os.environ.get("XDG_CONFIG_HOME", HOME / ".config")) / "local-harness"
+JSON_PATH = OUT / "system-profile.json"
+MD_PATH = OUT / "system-profile.md"
+
+
+def run(command: list[str], timeout: int = 8) -> str:
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        return (completed.stdout or "").strip()
+    except Exception:
+        return ""
+
+
+def read(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def os_release() -> dict[str, str]:
+    values = {}
+    for line in read("/etc/os-release").splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key] = value.strip().strip('"')
+    return {
+        "name": values.get("NAME", "Linux"),
+        "version": values.get("VERSION", ""),
+        "id": values.get("ID", ""),
+        "pretty": values.get("PRETTY_NAME", values.get("NAME", "Linux")),
+    }
+
+
+def memory() -> dict[str, float]:
+    fields = {}
+    for line in read("/proc/meminfo").splitlines():
+        key, value = line.split(":", 1)
+        fields[key] = int(value.strip().split()[0]) / 1024 / 1024
+    total = fields.get("MemTotal", 0)
+    available = fields.get("MemAvailable", 0)
+    swap = fields.get("SwapTotal", 0)
+    return {
+        "total_gib": round(total, 2),
+        "available_gib": round(available, 2),
+        "swap_gib": round(swap, 2),
+    }
+
+
+def cpu() -> dict[str, object]:
+    model = "unknown"
+    for line in read("/proc/cpuinfo").splitlines():
+        if line.lower().startswith("model name"):
+            model = line.split(":", 1)[1].strip()
+            break
+    return {
+        "model": model,
+        "logical_cores": os.cpu_count() or 0,
+        "architecture": platform.machine(),
+    }
+
+
+def gpu() -> list[str]:
+    output = run(["lspci", "-nn"], timeout=5)
+    return [line for line in output.splitlines() if any(key in line for key in ("VGA", "3D controller", "Display controller"))][:4]
+
+
+def storage() -> list[dict[str, str]]:
+    output = run(["df", "-h", str(HOME)], timeout=5)
+    rows = []
+    for line in output.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 6:
+            rows.append({
+                "filesystem": parts[0],
+                "size": parts[1],
+                "used": parts[2],
+                "available": parts[3],
+                "percent": parts[4],
+                "mount": parts[5],
+            })
+    return rows
+
+
+def services() -> dict[str, str]:
+    result = {}
+    for unit in ("llama-server", "local-harness-flatpak"):
+        result[unit] = run(["systemctl", "--user", "is-active", unit], timeout=3) or "unknown"
+    return result
+
+
+def tools() -> dict[str, str]:
+    names = (
+        "flatpak", "podman", "distrobox", "magick", "tesseract",
+        "llama-server", "photocraft-cli", "python3", "node",
+    )
+    return {name: shutil.which(name) or "" for name in names}
+
+
+def main() -> int:
+    OUT.mkdir(parents=True, exist_ok=True)
+    desktop = {
+        "session": os.environ.get("XDG_SESSION_TYPE", ""),
+        "desktop": os.environ.get("XDG_CURRENT_DESKTOP", ""),
+        "display": os.environ.get("DISPLAY", ""),
+        "wayland": os.environ.get("WAYLAND_DISPLAY", ""),
+    }
+    profile = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "hostname": platform.node(),
+        "os": os_release(),
+        "kernel": platform.release(),
+        "cpu": cpu(),
+        "memory": memory(),
+        "gpu": gpu(),
+        "storage": storage(),
+        "desktop": desktop,
+        "services": services(),
+        "tools": tools(),
+    }
+    temp = JSON_PATH.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
+    temp.replace(JSON_PATH)
+
+    os_info = profile["os"]
+    mem = profile["memory"]
+    lines = [
+        "# Local Harness system profile",
+        "",
+        f"- Updated: {profile['updated_at']}",
+        f"- Host: {profile['hostname']}",
+        f"- OS: {os_info['pretty']}",
+        f"- Kernel: {profile['kernel']}",
+        f"- CPU: {profile['cpu']['model']} ({profile['cpu']['logical_cores']} logical cores, {profile['cpu']['architecture']})",
+        f"- Memory: {mem['total_gib']} GiB total, {mem['available_gib']} GiB available, {mem['swap_gib']} GiB swap",
+    ]
+    if profile["gpu"]:
+        lines.append("- GPU: " + " | ".join(profile["gpu"]))
+    else:
+        lines.append("- GPU: not detected by lspci")
+    for disk in profile["storage"]:
+        lines.append(f"- Storage {disk['mount']}: {disk['size']} total, {disk['available']} free ({disk['percent']} used)")
+    lines.append(
+        "- Session: "
+        + ", ".join(f"{key}={value or '-'}" for key, value in desktop.items())
+    )
+    lines.append("- Services: " + ", ".join(f"{key}={value}" for key, value in profile["services"].items()))
+    present = [f"{name}={path}" for name, path in profile["tools"].items() if path]
+    if present:
+        lines.append("- Tools: " + ", ".join(present))
+    lines.extend([
+        "",
+        "Use this as cached context. Verify live state before destructive administration.",
+        "Refresh with: local-harness-system-profile",
+    ])
+    MD_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(MD_PATH)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
