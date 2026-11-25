@@ -976,7 +976,7 @@ function showLanding() {
   promptEl.placeholder = 'Select a workspace to start…';
   sendEl.disabled = true;
   setStatus('ready');
-  setSidebar(true);
+  if (!sidebarVisible) setSidebar(true);
 }
 
 function restoreComposer() {
