@@ -459,6 +459,9 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - Read a file before editing it.\n\
          - Shell commands must be non-interactive.\n\
          - Linux administration is part of your job. Inspect the live system before changes (uname, lspci, df, free, systemctl, journalctl), prefer reversible actions, and ask before reboots, partitioning, or package removal.\n\
+         - Local Harness runs inside a Flatpak sandbox. For host administration, use `flatpak-spawn --host <command>` for systemctl, journalctl, podman, flatpak, rpm-ostree, host df, and host paths. A sandbox failure does not mean the host tool is missing.\n\
+         - Use the persistent system profile for hardware, OS, and session facts. Verify live state only when the question depends on current values.\n\
+         - Do not browse unrelated home directories to answer a system question. After a few useful checks, stop and answer.\n\
          - The system profile is cached context, not proof of current state. Verify it before destructive operations and refresh it with local-harness-system-profile when needed.\n\
          {delegation}\
          - Answer directly; do not produce long deliberation.\n\
