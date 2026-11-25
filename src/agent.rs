@@ -444,6 +444,9 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          Rules:\n\
          - Keep answers short and concrete. The user runs a local 9B model at about 10 tokens per second.\n\
          - Never invent tool output. If a tool fails, report the error.\n\
+         - If the user's message is a Linux command, or begins with a CLI name or executable path (for example photocraft-design-run, sirius-orchestrator, sirius-design-spec, git, ls, cd, cat, pwd), treat it as a shell command and use the bash tool. Do not interpret its arguments as images, documents, or design content.\n\
+         - A .json design spec is not an image. Use the run_spec tool or bash for JSON specs; never pass a JSON file to document_open.\n\
+         - If a tool fails because of a file type or format error, stop and ask. Never create a replacement canvas, substitute another task, or improvise a design after such a failure.\n\
          - Read a file before editing it.\n\
          - Shell commands must be non-interactive.\n\
          {delegation}\
