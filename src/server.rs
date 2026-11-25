@@ -873,6 +873,7 @@ async fn chat(
                 pending: task_state.pending_approvals.clone(),
                 session: session.id.clone(),
                 counter: AtomicU64::new(0),
+                cancel: task_cancel.clone(),
             })
         };
         let mut sink = ChannelSink { tx: tx.clone() };
@@ -927,7 +928,7 @@ async fn approval(
             let _ = sender.send(body.decision);
             (StatusCode::OK, "ok").into_response()
         }
-        None => (StatusCode::NOT_FOUND, "unknown or expired approval").into_response(),
+        None => (StatusCode::NOT_FOUND, "unknown or already handled approval").into_response(),
     }
 }
 
@@ -1074,11 +1075,18 @@ impl Drop for CancelOnDrop {
     }
 }
 
+async fn wait_for_cancel(cancel: Arc<AtomicBool>) {
+    while !cancel.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 struct SseApprover {
     tx: mpsc::UnboundedSender<SseEvent>,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>,
     session: String,
     counter: AtomicU64,
+    cancel: Arc<AtomicBool>,
 }
 
 #[async_trait::async_trait]
@@ -1097,11 +1105,10 @@ impl Approver for SseApprover {
             arguments: request.arguments.clone(),
             reason: request.reason.clone(),
         });
-        let decision = tokio::time::timeout(Duration::from_secs(120), receiver)
-            .await
-            .ok()
-            .and_then(|result| result.ok())
-            .unwrap_or(false);
+        let decision = tokio::select! {
+            result = receiver => result.unwrap_or(false),
+            _ = wait_for_cancel(self.cancel.clone()) => false,
+        };
         self.pending.lock().await.remove(&id);
         decision
     }
