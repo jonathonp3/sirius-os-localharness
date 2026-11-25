@@ -212,13 +212,14 @@ impl Governor {
         let budget = self.prompt_budget();
         let mut report = FitReport { budget, ..FitReport::default() };
 
-        if self.estimate(messages, tools) > budget {
-            for message in messages.iter_mut().filter(|message| message.role == "tool") {
-                if let Some(content) = &message.content {
-                    if content.chars().count() > 12_000 {
-                        message.content = Some(truncate_chars(content, 12_000));
-                        report.truncated_tools += 1;
-                    }
+        // A single tool result can be larger than the whole useful context.
+        // Keep the full result in the UI/session, but always cap what is sent
+        // back to the model, even when the history is otherwise small.
+        for message in messages.iter_mut().filter(|message| message.role == "tool") {
+            if let Some(content) = &message.content {
+                if content.chars().count() > 12_000 {
+                    message.content = Some(truncate_chars(content, 12_000));
+                    report.truncated_tools += 1;
                 }
             }
         }
