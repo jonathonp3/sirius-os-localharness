@@ -420,13 +420,33 @@ impl ToolSet {
                     true,
                     &self.root,
                 ).await?;
+                let recent_text = String::from_utf8_lossy(&recent.stdout).to_string();
+                let app_errors: Vec<&str> = recent_text
+                    .lines()
+                    .filter(|line| {
+                        let lower = line.to_ascii_lowercase();
+                        line.contains(" E srv")
+                            || line.contains(" W srv")
+                            || lower.contains("error")
+                            || lower.contains("failed")
+                            || lower.contains("exceed")
+                            || lower.contains("panic")
+                    })
+                    .take(30)
+                    .collect();
+                let app_errors_text = if app_errors.is_empty() {
+                    "-- no application error markers --".to_string()
+                } else {
+                    app_errors.join("\n")
+                };
                 Ok(truncate(&format!(
-                    "SERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (priority warning and above)\n{}",
+                    "SERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (journal priority warning and above)\n{}\n\nAPPLICATION ERROR MARKERS (from recent output)\n{}",
                     String::from_utf8_lossy(&status.stdout).trim(),
                     lines,
                     since,
-                    String::from_utf8_lossy(&recent.stdout).trim(),
+                    recent_text.trim(),
                     String::from_utf8_lossy(&warnings.stdout).trim(),
+                    app_errors_text,
                 )))
             }
             "bash" | "host_bash" => {
