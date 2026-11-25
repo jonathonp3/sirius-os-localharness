@@ -203,7 +203,7 @@ impl Governor {
             })
             .sum();
         let tool_chars: usize = tools.iter().map(|tool| tool.to_string().len()).sum();
-        (message_chars + tool_chars) / 3 + 32
+        (message_chars + tool_chars) / 2 + 32
     }
 
     /// Keep the prompt inside the budget: trim tool results, then drop the

@@ -229,7 +229,7 @@ async fn main() -> Result<()> {
     let context_limit = cli
         .context_limit
         .or_else(|| profile.as_ref().and_then(|profile| profile.context_limit))
-        .unwrap_or(8192);
+        .unwrap_or(32_768);
     let temperature = cli
         .temperature
         .or_else(|| profile.as_ref().and_then(|profile| profile.temperature))
