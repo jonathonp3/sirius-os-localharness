@@ -434,18 +434,39 @@ impl ToolSet {
                     })
                     .take(30)
                     .collect();
+                let status_text = String::from_utf8_lossy(&status.stdout).trim().to_string();
+                let warnings_text = String::from_utf8_lossy(&warnings.stdout).trim().to_string();
                 let app_errors_text = if app_errors.is_empty() {
                     "-- no application error markers --".to_string()
                 } else {
                     app_errors.join("\n")
                 };
+                let active = status_text.lines().any(|line| line.trim() == "ActiveState=active");
+                let restarts = status_text
+                    .lines()
+                    .find_map(|line| line.strip_prefix("NRestarts="))
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .unwrap_or(0);
+                let has_warnings = !warnings_text.contains("-- No entries --") && !warnings_text.is_empty();
+                let verdict = if !active {
+                    "FAILED"
+                } else if restarts > 0 || !app_errors.is_empty() || has_warnings {
+                    "DEGRADED"
+                } else {
+                    "OK"
+                };
                 Ok(truncate(&format!(
-                    "SERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (journal priority warning and above)\n{}\n\nAPPLICATION ERROR MARKERS (from recent output)\n{}",
-                    String::from_utf8_lossy(&status.stdout).trim(),
+                    "VERDICT\n{}\nActive: {}\nNRestarts: {}\nApplication error markers: {}\nJournal warnings/errors: {}\n\nSERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (journal priority warning and above)\n{}\n\nAPPLICATION ERROR MARKERS (from recent output)\n{}",
+                    verdict,
+                    active,
+                    restarts,
+                    app_errors.len(),
+                    has_warnings,
+                    status_text,
                     lines,
                     since,
                     recent_text.trim(),
-                    String::from_utf8_lossy(&warnings.stdout).trim(),
+                    warnings_text,
                     app_errors_text,
                 )))
             }

@@ -517,10 +517,11 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - Never claim a service is healthy or logs are clean without reading live status/logs. Cite the command result.\n\
          - Journal runbook (mandatory):\n\
            1. Call log_check with unit and since (default 24 hours ago).\n\
-           2. Read SERVICE first: ActiveState, NRestarts, ActiveEnterTimestamp.\n\
+           2. Read VERDICT first, then SERVICE: ActiveState, NRestarts, ActiveEnterTimestamp.\n\
            3. Read APPLICATION ERROR MARKERS and WARNINGS/ERRORS.\n\
            4. Report every error/failed/exceeded/panic marker, even if the service is active.\n\
-           5. Only after steps 1-4, summarize; do not summarize the first lines of journalctl.\n\
+           5. If VERDICT is DEGRADED or FAILED, do not call the service normal.\n\
+           6. Only after steps 1-5, summarize; do not summarize the first lines of journalctl.\n\
          - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
          - llama-server and local-harness are USER systemd units. Always use `systemctl --user` and `journalctl --user` for them. A system-level query reporting inactive is not authoritative.\n\
          - For current questions, run the live check before the final answer; do not quote the cached profile value as if it were live.\n\
