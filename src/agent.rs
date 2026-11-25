@@ -159,7 +159,7 @@ pub async fn run(
         }
         if report.estimate > report.budget {
             bail!(
-                "prompt (~{} tokens) exceeds the local budget ({}); raise --context-limit or lower --max-tokens",
+                "prompt (~{} tokens) exceeds the local budget ({}). Reduce pasted content or old logs, start a new chat, or raise --context-limit.",
                 report.estimate,
                 report.budget
             );
@@ -190,7 +190,7 @@ pub async fn run(
                         let report = config.governor.fit(&mut messages, &definitions);
                         if report.estimate > report.budget {
                             bail!(
-                                "prompt (~{} tokens) still exceeds the local budget ({}); raise --context-limit or lower --max-tokens",
+                                "prompt (~{} tokens) still exceeds the local budget ({}). Reduce pasted content or old logs, or start a new chat.",
                                 report.estimate,
                                 report.budget
                             );
@@ -523,6 +523,12 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
            5. If VERDICT is DEGRADED or FAILED, do not call the service normal.\n\
            6. Only after steps 1-5, summarize; do not summarize the first lines of journalctl.\n\
          - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
+         - Oversized-log/context procedure (mandatory):\n\
+           1. Use log_check for journal/log questions; never dump the full journal.\n\
+           2. Start with a recent window (24 hours). Recent logs and current tool results take priority over historical summaries.\n\
+           3. Do not paste or repeat full log output back into the chat; summarize the verdict and a few relevant lines.\n\
+           4. If a request exceeds the context window, do not retry the same prompt. Reduce pasted content, drop old logs, or start a fresh chat.\n\
+           5. Do not recommend restarting a service when the only errors are request/context-size errors.\n\
          - llama-server and local-harness are USER systemd units. Always use `systemctl --user` and `journalctl --user` for them. A system-level query reporting inactive is not authoritative.\n\
          - For current questions, run the live check before the final answer; do not quote the cached profile value as if it were live.\n\
          - The latest live tool result is authoritative for current state. It overrides earlier chat messages and compacted summaries, even if they said active, healthy, or normal. Do not reconcile toward the old answer.\n\
