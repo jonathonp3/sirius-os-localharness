@@ -166,11 +166,39 @@ pub async fn run(
         }
 
         {
-            let mut on_token = |text: &str| sink.token(text);
-            let turn = client
-                .complete(&messages, &definitions, config.max_tokens, config.temperature, config.think, config.cancel.as_ref(), &mut on_token)
-                .await?;
-            drop(on_token);
+            let mut context_retry = false;
+            let turn = loop {
+                let result = {
+                    let mut on_token = |text: &str| sink.token(text);
+                    client
+                        .complete(&messages, &definitions, config.max_tokens, config.temperature, config.think, config.cancel.as_ref(), &mut on_token)
+                        .await
+                };
+                match result {
+                    Ok(turn) => break turn,
+                    Err(error)
+                        if !context_retry
+                            && error.to_string().contains("exceeds the available context size") =>
+                    {
+                        context_retry = true;
+                        if let Some(summary) = compact(&config, &client, &mut messages, session).await? {
+                            sink.notice(&format!(
+                                "context overflow; compacted earlier history into a {} char summary",
+                                summary.chars().count()
+                            ));
+                        }
+                        let report = config.governor.fit(&mut messages, &definitions);
+                        if report.estimate > report.budget {
+                            bail!(
+                                "prompt (~{} tokens) still exceeds the local budget ({}); raise --context-limit or lower --max-tokens",
+                                report.estimate,
+                                report.budget
+                            );
+                        }
+                    }
+                    Err(error) => return Err(error),
+                }
+            };
 
             if let Some(usage) = &turn.usage {
                 let cached = usage

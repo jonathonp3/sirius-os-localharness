@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::llm::Message;
 
-const SAFETY_TOKENS: usize = 256;
+const SAFETY_TOKENS: usize = 4_096;
 
 #[derive(Debug, Clone, Default)]
 pub struct Hardware {
@@ -203,7 +203,7 @@ impl Governor {
             })
             .sum();
         let tool_chars: usize = tools.iter().map(|tool| tool.to_string().len()).sum();
-        (message_chars + tool_chars) / 4 + 32
+        (message_chars + tool_chars) / 3 + 32
     }
 
     /// Keep the prompt inside the budget: trim tool results, then drop the
