@@ -393,7 +393,7 @@ const exportAllButton = document.getElementById('export-all');
 let currentSessionId = null;
 let sessionList = [];
 let workspaceItems = [];
-let currentWorkspaceId = 'home';
+let currentWorkspaceId = null;
 let sidebarVisible = false;
 let selectMode = false;
 let selectedSessions = new Set();
@@ -958,18 +958,30 @@ async function refreshWorkspaces() {
     }
     const data = await response.json();
     workspaceItems = data.workspaces || [];
-    if (!workspaceItems.some((workspace) => workspace.id === currentWorkspaceId)) {
-      currentWorkspaceId = 'home';
-    }
     renderWorkspaces();
+    if (!currentWorkspaceId && !currentSessionId) showLanding();
   } catch (error) {
     add('error', String(error));
   }
 }
 
 function currentWorkspace() {
-  return workspaceItems.find((workspace) => workspace.id === currentWorkspaceId)
-    || { id: 'home', name: 'Home', path: '' };
+  return workspaceItems.find((workspace) => workspace.id === currentWorkspaceId) || null;
+}
+
+function showLanding() {
+  if (currentSessionId || currentWorkspaceId) return;
+  log.innerHTML = '';
+  add('meta', 'Select a workspace to start a new chat. Previous chats appear after choosing a workspace.');
+  promptEl.placeholder = 'Select a workspace to start…';
+  sendEl.disabled = true;
+  setStatus('ready');
+  setSidebar(true);
+}
+
+function restoreComposer() {
+  promptEl.placeholder = 'Ask the local model… (Enter to send, Shift+Enter for a newline)';
+  sendEl.disabled = false;
 }
 
 function renderWorkspaces() {
@@ -998,6 +1010,7 @@ function selectWorkspace(id) {
   log.innerHTML = '';
   const workspace = currentWorkspace();
   add('meta', 'workspace · ' + workspace.name + (workspace.path ? ' · ' + workspace.path : ''));
+  restoreComposer();
   setStatus('ready');
   renderWorkspaces();
   refreshSessions();
@@ -1281,10 +1294,16 @@ function newChat() {
   assistantEl = null;
   openTool = null;
   finished = true;
+  const workspace = currentWorkspace();
+  if (!workspace) {
+    showLanding();
+    return;
+  }
+  restoreComposer();
   sendEl.disabled = false;
   stopEl.disabled = true;
   setStatus('ready');
-  add('meta', 'new chat · ' + currentWorkspace().name);
+  add('meta', 'new chat · ' + workspace.name);
   promptEl.focus();
 }
 
@@ -1397,6 +1416,7 @@ document.addEventListener('keydown', (event) => {
 setSidebar(false);
 refreshWorkspaces();
 refreshSessions();
+showLanding();
 
 if (!token) setStatus('missing token in URL', true);
 
@@ -2230,7 +2250,15 @@ async function send() {
   }
 }
 
-form.addEventListener('submit', (event) => { event.preventDefault(); send(); });
+form.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!currentSessionId && !currentWorkspaceId) {
+    add('meta', 'Select a workspace before sending a message.');
+    setSidebar(true);
+    return;
+  }
+  send();
+});
 stopEl.addEventListener('click', () => { if (controller) controller.abort(); });
 promptEl.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }

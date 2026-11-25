@@ -1,5 +1,6 @@
 //! One agent loop: assemble prompt, call the model, run tools, repeat.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -445,9 +446,29 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
         .filter(|text| !text.trim().is_empty())
         .map(|text| truncate(&text, 3500))
         .unwrap_or_else(|| "No system profile collected yet. Run local-harness-system-profile to collect one.".to_string());
+    let mut mcp_groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for tool in tools {
+        if let Some(rest) = tool.strip_prefix("mcp__") {
+            if let Some((server, member)) = rest.split_once("__") {
+                mcp_groups.entry(server.to_string()).or_default().push(member.to_string());
+            }
+        }
+    }
+    let mcp_summary = if mcp_groups.is_empty() {
+        "No MCP tools connected.".to_string()
+    } else {
+        mcp_groups
+            .iter()
+            .map(|(server, members)| format!("- {server}: {}", members.join(", ")))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     format!(
         "{role} `{}`.\n\
          Tools available: {}.\n\
+         MCP tools are connected and are expected capabilities, not optional extras:\n{mcp_summary}\n\
+         - Use the matching MCP tool when the task fits; do not claim an MCP capability is unavailable without checking.\n\
+         - For PhotoCraft, use run_spec for JSON design specs, document_open only for images/PSD, and document_export for outputs.\n\
          Use a tool whenever the task requires reading, writing, listing, or running something; otherwise answer directly.\n\
          Persistent system context (refreshed periodically, independent of chats):\n{profile}\n\
          Rules:\n\
