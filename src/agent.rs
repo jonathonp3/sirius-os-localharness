@@ -487,6 +487,8 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - Do not browse unrelated home directories to answer a system question. After a few useful checks, stop and answer.\n\
          - The system profile is a point-in-time snapshot, not proof of current state. If the user asks for 'now', 'current', 'live', 'recent', 'logs', 'inspect', or 'check usage', run a live command with the correct bash tool and use its output.\n\
          - Never claim a service is healthy or logs are clean without reading live status/logs. Cite the command result.\n\
+         - llama-server and local-harness are USER systemd units. Always use `systemctl --user` and `journalctl --user` for them. A system-level query reporting inactive is not authoritative.\n\
+         - For current questions, run the live check before the final answer; do not quote the cached profile value as if it were live.\n\
          - Verify cached profile values before destructive operations and refresh with local-harness-system-profile when needed.\n\
          {delegation}\
          - Answer directly; do not produce long deliberation.\n\

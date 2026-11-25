@@ -207,7 +207,7 @@ impl ToolSet {
                 "type": "function",
                 "function": {
                     "name": "host_bash",
-                    "description": "Run a non-interactive bash command on the host, outside the Flatpak sandbox. Use for systemctl, journalctl, podman, flatpak, rpm-ostree, and host hardware or network inspection.",
+                    "description": "Run a non-interactive bash command on the host, outside the Flatpak sandbox. Use for systemctl, journalctl, podman, flatpak, rpm-ostree, and host hardware or network inspection. For llama-server and local-harness use systemctl --user and journalctl --user.",
                     "parameters": {
                         "type": "object",
                         "properties": { "command": { "type": "string", "description": "Command to run with host bash -lc" } },
@@ -371,6 +371,13 @@ impl ToolSet {
                 }
                 let host = name == "host_bash";
                 let command = string_arg(&arguments, "command")?;
+                if host && (command.to_ascii_lowercase().contains("llama-server")
+                    || command.to_ascii_lowercase().contains("local-harness"))
+                    && (command.contains("systemctl") || command.contains("journalctl"))
+                    && !command.contains("--user")
+                {
+                    bail!("user units llama-server and local-harness require --user: use systemctl --user or journalctl --user");
+                }
                 if let Some(word) = first_command_word(&command) {
                     if !command_available(&word, host).await? {
                         bail!(
