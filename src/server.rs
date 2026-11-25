@@ -1182,8 +1182,10 @@ impl EventSink for ChannelSink {
 
     fn tool_result(&mut self, result: &str) {
         let chars = result.chars().count();
-        let preview: String = result.chars().take(4_000).collect();
-        let _ = self.tx.send(SseEvent::ToolResult { chars, preview });
+        let _ = self.tx.send(SseEvent::ToolResult {
+            chars,
+            preview: result.to_string(),
+        });
     }
 
     fn notice(&mut self, text: &str) {
