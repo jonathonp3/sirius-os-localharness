@@ -8,6 +8,7 @@ import os
 import platform
 import shutil
 import subprocess
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -79,6 +80,72 @@ def gpu() -> list[str]:
     return [line for line in output.splitlines() if any(key in line for key in ("VGA", "3D controller", "Display controller"))][:4]
 
 
+def gpu_vram() -> list[dict[str, object]]:
+    devices = []
+    for device in sorted(Path("/sys/class/drm").glob("card*/device")):
+        total_path = device / "mem_info_vram_total"
+        if not total_path.exists():
+            continue
+        try:
+            total = int(total_path.read_text().strip())
+            used = int((device / "mem_info_vram_used").read_text().strip())
+        except Exception:
+            continue
+        pci = Path(device.resolve()).name.removeprefix("0000:")
+        devices.append({
+            "pci": pci,
+            "total_gib": round(total / 1024**3, 2),
+            "used_gib": round(used / 1024**3, 2),
+        })
+    return devices
+
+
+def hwmon_temp(driver: str, label: str = "temp1") -> float | None:
+    for directory in Path("/sys/class/hwmon").glob("hwmon*"):
+        try:
+            if (directory / "name").read_text().strip() != driver:
+                continue
+            raw = (directory / f"{label}_input").read_text().strip()
+            return round(int(raw) / 1000, 1)
+        except Exception:
+            continue
+    return None
+
+
+def gpu_temps() -> dict[str, float]:
+    temps = {}
+    for label in ("edge", "junction", "mem"):
+        for directory in Path("/sys/class/hwmon").glob("hwmon*"):
+            try:
+                if (directory / "name").read_text().strip() != "amdgpu":
+                    continue
+                for candidate in directory.glob("temp*_label"):
+                    if candidate.read_text().strip() != label:
+                        continue
+                    raw = candidate.with_name(candidate.name.replace("_label", "_input")).read_text().strip()
+                    temps[label] = round(int(raw) / 1000, 1)
+            except Exception:
+                continue
+    return temps
+
+
+def motherboard() -> dict[str, str]:
+    return {
+        "vendor": read("/sys/class/dmi/id/board_vendor").strip(),
+        "name": read("/sys/class/dmi/id/board_name").strip(),
+    }
+
+
+def llama_model() -> str:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8080/v1/models", timeout=3) as response:
+            data = json.loads(response.read())
+        models = data.get("models") or []
+        return str(models[0].get("name", "")) if models else ""
+    except Exception:
+        return ""
+
+
 def storage() -> list[dict[str, str]]:
     output = run(["df", "-h", str(HOME)], timeout=5)
     rows = []
@@ -127,6 +194,11 @@ def main() -> int:
         "cpu": cpu(),
         "memory": memory(),
         "gpu": gpu(),
+        "gpu_vram": gpu_vram(),
+        "gpu_temps": gpu_temps(),
+        "cpu_temp_c": hwmon_temp("k10temp", "temp1"),
+        "motherboard": motherboard(),
+        "llama_model": llama_model(),
         "storage": storage(),
         "desktop": desktop,
         "services": services(),
@@ -152,6 +224,16 @@ def main() -> int:
         lines.append("- GPU: " + " | ".join(profile["gpu"]))
     else:
         lines.append("- GPU: not detected by lspci")
+    for vram in profile["gpu_vram"]:
+        lines.append(f"- VRAM {vram['pci']}: {vram['total_gib']} GiB total, {vram['used_gib']} GiB used")
+    if profile["gpu_temps"]:
+        lines.append("- GPU temps: " + ", ".join(f"{key}={value}°C" for key, value in profile["gpu_temps"].items()))
+    if profile["cpu_temp_c"] is not None:
+        lines.append(f"- CPU temp: {profile['cpu_temp_c']}°C")
+    if profile["motherboard"]["name"]:
+        lines.append(f"- Motherboard: {profile['motherboard']['vendor']} {profile['motherboard']['name']}")
+    if profile["llama_model"]:
+        lines.append(f"- llama model: {profile['llama_model']}")
     for disk in profile["storage"]:
         lines.append(f"- Storage {disk['mount']}: {disk['size']} total, {disk['available']} free ({disk['percent']} used)")
     lines.append(
