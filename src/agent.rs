@@ -516,6 +516,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - The system profile is a point-in-time snapshot, not proof of current state. If the user asks for 'now', 'current', 'live', 'recent', 'logs', 'inspect', or 'check usage', run a live command with the correct bash tool and use its output.\n\
          - Never claim a service is healthy or logs are clean without reading live status/logs. Cite the command result.\n\
          - For log or error questions, use log_check with the unit name and a time window. Report current state, NRestarts, recent output, and any warning/error lines. Do not summarize only the first lines of journalctl.\n\
+         - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
          - llama-server and local-harness are USER systemd units. Always use `systemctl --user` and `journalctl --user` for them. A system-level query reporting inactive is not authoritative.\n\
          - For current questions, run the live check before the final answer; do not quote the cached profile value as if it were live.\n\
          - Verify cached profile values before destructive operations and refresh with local-harness-system-profile when needed.\n\

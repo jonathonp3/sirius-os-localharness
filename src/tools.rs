@@ -442,6 +442,15 @@ impl ToolSet {
                 {
                     bail!("user units llama-server and local-harness require --user: use systemctl --user or journalctl --user");
                 }
+                if host
+                    && command.contains("journalctl")
+                    && (command.contains("llama-server") || command.contains("local-harness"))
+                    && !command.contains("--since")
+                    && !command.contains("-n ")
+                    && !command.contains("--lines")
+                {
+                    bail!("bare journalctl queries can return huge history. Use log_check with the unit and a since window; if raw output is required, add --since and -n.");
+                }
                 if let Some(word) = first_command_word(&command) {
                     if !command_available(&word, host).await? {
                         bail!(
