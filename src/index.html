@@ -15,7 +15,7 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 #status.error { color:#ff6b6b; }
 #log { flex:1; min-height:0; overflow:auto; padding:18px; display:flex; flex-direction:column; gap:10px; }
 .bubble { max-width:min(760px, 92%); padding:10px 12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
-.user { align-self:flex-end; background:transparent; border:1px solid var(--border); color:var(--muted); font-size:14px; line-height:1.45; position:relative; padding:8px 58px 8px 10px; opacity:.9; }
+.user { align-self:flex-end; background:transparent; border:1px solid var(--border); color:var(--muted); font-size:14px; line-height:1.45; position:relative; padding:8px 58px 8px 10px; opacity:.9; white-space:pre-wrap; word-break:break-word; tab-size:2; }
 .bubble-copy { position:absolute; top:4px; right:5px; background:var(--bg); color:var(--muted); border:1px solid var(--border); border-radius:4px; font-size:11px; padding:1px 5px; cursor:pointer; }
 .bubble-copy:hover { color:var(--text); }
 .assistant { align-self:flex-start; position:relative; background:var(--panel); border:1px solid var(--border); color:var(--text); font-size:16px; line-height:1.6; white-space:normal; padding-right:64px; }
@@ -2192,8 +2192,8 @@ function handleBlock(block) {
 }
 
 async function send() {
-  const text = promptEl.value.trim();
-  if (!text || !token || sendEl.disabled) return;
+  const text = promptEl.value;
+  if (!text.trim() || !token || sendEl.disabled) return;
   addUserMessage(text);
   promptEl.value = '';
   autoGrowPrompt();
