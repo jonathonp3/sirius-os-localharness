@@ -107,6 +107,7 @@ impl ToolSet {
         if self.policy.allows_shell() {
             names.push("bash".to_string());
             names.push("host_bash".to_string());
+            names.push("log_check".to_string());
             for plugin in self.plugins.iter() {
                 names.push(plugin_tool_name(&plugin.name));
             }
@@ -212,6 +213,22 @@ impl ToolSet {
                         "type": "object",
                         "properties": { "command": { "type": "string", "description": "Command to run with host bash -lc" } },
                         "required": ["command"]
+                    }
+                }
+            }));
+            definitions.push(json!({
+                "type": "function",
+                "function": {
+                    "name": "log_check",
+                    "description": "Check a systemd user unit's current state, recent log lines, and warning/error entries. Use this for questions about logs or errors instead of reading the beginning of a huge journal.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "unit": { "type": "string", "description": "Systemd user unit, e.g. llama-server" },
+                            "since": { "type": "string", "description": "journalctl --since value (default: 24 hours ago)" },
+                            "lines": { "type": "integer", "description": "Recent lines to show (default 120, max 500)" }
+                        },
+                        "required": ["unit"]
                     }
                 }
             }));
@@ -364,6 +381,53 @@ impl ToolSet {
                 }
                 entries.sort();
                 Ok(truncate(&entries.join("\n")))
+            }
+            "log_check" => {
+                if !self.policy.allows_shell() {
+                    bail!("log_check is disabled by the tool policy (use --tool-policy full)");
+                }
+                let unit = string_arg(&arguments, "unit")?;
+                if !unit.chars().all(|c| c.is_ascii_alphanumeric() || "-_.@:".contains(c)) {
+                    bail!("invalid unit name");
+                }
+                let since = arguments
+                    .get("since")
+                    .and_then(Value::as_str)
+                    .unwrap_or("24 hours ago")
+                    .to_string();
+                if !since.chars().all(|c| c.is_ascii_alphanumeric() || " :_-+".contains(c)) {
+                    bail!("invalid since value");
+                }
+                let lines = arguments
+                    .get("lines")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(120)
+                    .clamp(10, 500);
+                let unit_arg = format!("'{}'", unit);
+                let since_arg = format!("'{}'", since);
+                let recent = run_bash(
+                    &format!("journalctl --user -u {unit_arg} --since {since_arg} -n {lines} --no-pager"),
+                    true,
+                    &self.root,
+                ).await?;
+                let warnings = run_bash(
+                    &format!("journalctl --user -u {unit_arg} --since {since_arg} -p warning -n 200 --no-pager"),
+                    true,
+                    &self.root,
+                ).await?;
+                let status = run_bash(
+                    &format!("systemctl --user show {unit_arg} -p ActiveState -p NRestarts -p ActiveEnterTimestamp --no-pager"),
+                    true,
+                    &self.root,
+                ).await?;
+                Ok(truncate(&format!(
+                    "SERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (priority warning and above)\n{}",
+                    String::from_utf8_lossy(&status.stdout).trim(),
+                    lines,
+                    since,
+                    String::from_utf8_lossy(&recent.stdout).trim(),
+                    String::from_utf8_lossy(&warnings.stdout).trim(),
+                )))
             }
             "bash" | "host_bash" => {
                 if !self.policy.allows_shell() {
