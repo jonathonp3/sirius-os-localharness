@@ -178,6 +178,122 @@ def tools() -> dict[str, str]:
     return {name: shutil.which(name) or "" for name in names}
 
 
+def ostree_status() -> dict[str, object]:
+    raw = run(["rpm-ostree", "status", "--json"], timeout=15)
+    if not raw:
+        return {"available": False}
+    try:
+        data = json.loads(raw)
+        deployments = data.get("deployments") or []
+        deployment = next((item for item in deployments if item.get("booted")), deployments[0] if deployments else {})
+        return {
+            "available": True,
+            "origin": deployment.get("origin") or deployment.get("container-image-reference") or "",
+            "version": deployment.get("version") or "",
+            "commit": deployment.get("checksum") or "",
+            "timestamp": deployment.get("timestamp") or "",
+        }
+    except Exception as error:
+        return {"available": True, "error": str(error)}
+
+
+def flatpak_apps() -> list[dict[str, str]]:
+    output = run(["flatpak", "list", "--app", "--columns=application,name,version,origin"], timeout=12)
+    apps = []
+    for line in output.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 4:
+            apps.append({"id": parts[0], "name": parts[1], "version": parts[2], "origin": parts[3]})
+    return apps[:40]
+
+
+def virtualization() -> dict[str, object]:
+    processes = run(["ps", "-eo", "comm="], timeout=5).splitlines()
+    containers = []
+    for line in run(["podman", "ps", "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}"], timeout=8).splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            containers.append({"name": parts[0], "image": parts[1], "status": parts[2] if len(parts) > 2 else ""})
+    vms = [line for line in run(["virsh", "list", "--all", "--name"], timeout=8).splitlines() if line.strip()]
+    boxes = []
+    for line in run(["distrobox", "list"], timeout=8).splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            boxes.append({"name": parts[1], "status": " ".join(parts[2:4])})
+    return {
+        "systemd_detect_virt": run(["systemd-detect-virt"], timeout=3) or "none",
+        "inside_container": Path("/run/.containerenv").exists() or Path("/.dockerenv").exists(),
+        "vm_processes": [name for name in processes if name.lower() in {"qemu-system-x86_64", "qemu-kvm", "virtqemud", "libvirtd"}][:8],
+        "vms": vms[:12],
+        "containers": containers[:20],
+        "distroboxes": boxes[:20],
+    }
+
+
+def photocraft_state() -> dict[str, object]:
+    names = [name for name in run(["ps", "-eo", "comm="], timeout=5).splitlines() if name.lower() in {"photocraft", "photocraft-cli"}]
+    appimages = []
+    seen = set()
+    for base in (HOME / "Applications", HOME / ".local/appimages", HOME / ".appimage", HOME / "Downloads"):
+        if not base.exists():
+            continue
+        for pattern in ("*photocraft*", "*Photocraft*", "*.appimage", "*.AppImage"):
+            for path in base.glob(pattern):
+                text = str(path)
+                if path.is_file() and text not in seen:
+                    seen.add(text)
+                    appimages.append(text)
+    return {"running": names, "appimages": appimages[:20]}
+
+
+def vpn_state() -> dict[str, object]:
+    names = [name for name in run(["ps", "-eo", "comm="], timeout=5).splitlines()
+             if name.lower() in {"pia", "pia-client", "piactl", "openvpn", "wireguard", "wg-quick"}]
+    links = run(["ip", "-br", "link", "show"], timeout=5).splitlines()
+    interfaces = [line.split(":")[0].strip() for line in links if any(token in line.lower() for token in ("tun", "wg", "pia"))]
+    nmcli = []
+    for line in run(["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"], timeout=5).splitlines():
+        parts = line.split(":")
+        if len(parts) >= 3 and any(token in parts[0].lower() for token in ("pia", "vpn", "wireguard")):
+            nmcli.append({"name": parts[0], "type": parts[1], "device": parts[2]})
+    default = run(["ip", "route", "show", "default"], timeout=3).splitlines()[:2]
+    return {
+        "pia_processes": names[:10],
+        "vpn_interfaces": interfaces[:10],
+        "active_vpn_connections": nmcli[:10],
+        "default_routes": default,
+        "pia_process_running": bool(names),
+        "pia_connected": bool(interfaces or nmcli),
+        "pia_active": bool(interfaces or nmcli),
+    }
+
+
+def ssh_targets() -> list[dict[str, str]]:
+    config = HOME / ".ssh/config"
+    if not config.exists():
+        return []
+    targets = []
+    current = None
+    for raw in config.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        key, value = parts[0].lower(), parts[1].strip()
+        if key == "host":
+            for alias in value.split():
+                if "*" not in alias and "?" not in alias:
+                    current = {"alias": alias, "hostname": "", "user": ""}
+                    targets.append(current)
+        elif current is not None and key == "hostname":
+            current["hostname"] = value
+        elif current is not None and key == "user":
+            current["user"] = value
+    return targets[:20]
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     desktop = {
@@ -203,6 +319,12 @@ def main() -> int:
         "desktop": desktop,
         "services": services(),
         "tools": tools(),
+        "ostree": ostree_status(),
+        "flatpaks": flatpak_apps(),
+        "virtualization": virtualization(),
+        "photocraft": photocraft_state(),
+        "vpn": vpn_state(),
+        "ssh_targets": ssh_targets(),
     }
     temp = JSON_PATH.with_suffix(".json.tmp")
     temp.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
@@ -244,6 +366,34 @@ def main() -> int:
     present = [f"{name}={path}" for name, path in profile["tools"].items() if path]
     if present:
         lines.append("- Tools: " + ", ".join(present))
+    image = profile["ostree"]
+    if image.get("available"):
+        lines.append(f"- Immutable image: {image.get('origin') or 'unknown origin'} ({image.get('version') or 'unknown version'})")
+        lines.append(f"- rpm-ostree: {'available' if shutil.which('rpm-ostree') else 'missing'}; dnf: {'available' if shutil.which('dnf') else 'missing'}")
+    else:
+        lines.append(f"- Package manager: dnf: {'available' if shutil.which('dnf') else 'missing'}; rpm-ostree: {'available' if shutil.which('rpm-ostree') else 'missing'}")
+    if profile["flatpaks"]:
+        lines.append("- Flatpaks: " + ", ".join(f"{app['name']} {app['version']}" for app in profile["flatpaks"][:10]))
+    virt = profile["virtualization"]
+    lines.append(
+        f"- Environment: virt={virt['systemd_detect_virt']}, container={virt['inside_container']}; "
+        f"VMs={len(virt['vms'])}, containers={len(virt['containers'])}, distroboxes={len(virt['distroboxes'])}"
+    )
+    if virt["vms"]:
+        lines.append("- VM targets: " + ", ".join(virt["vms"]))
+    if virt["containers"]:
+        lines.append("- Containers: " + ", ".join(item["name"] for item in virt["containers"][:8]))
+    pc = profile["photocraft"]
+    lines.append(f"- PhotoCraft running: {', '.join(pc['running']) if pc['running'] else 'no'}")
+    if pc["appimages"]:
+        lines.append("- PhotoCraft AppImages: " + ", ".join(pc["appimages"][:5]))
+    vpn = profile["vpn"]
+    lines.append(
+        f"- VPN/PIA: connected={vpn['pia_connected']}; client_running={vpn['pia_process_running']}; "
+        f"processes={', '.join(vpn['pia_processes']) or '-'}; interfaces={', '.join(vpn['vpn_interfaces']) or '-'}"
+    )
+    if profile["ssh_targets"]:
+        lines.append("- SSH targets: " + ", ".join(item["alias"] for item in profile["ssh_targets"]))
     lines.extend([
         "",
         "Use this as cached context. Verify live state before destructive administration.",
