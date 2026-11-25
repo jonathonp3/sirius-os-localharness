@@ -485,7 +485,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - Do not require dmidecode or sensors. Read motherboard data from /sys/class/dmi/id/board_* and temperatures from /sys/class/hwmon/* or use the profile.\n\
          - AMD VRAM files are /sys/class/drm/card*/device/mem_info_vram_total and mem_info_vram_used. There is no file named mem_info_vram.\n\
          - Do not browse unrelated home directories to answer a system question. After a few useful checks, stop and answer.\n\
-         - The system profile is a point-in-time snapshot, not proof of current state. If the user asks for "now", "current", "live", "recent", "logs", "inspect", or "check usage", run a live command with the correct bash tool and use its output.\n\
+         - The system profile is a point-in-time snapshot, not proof of current state. If the user asks for 'now', 'current', 'live', 'recent', 'logs', 'inspect', or 'check usage', run a live command with the correct bash tool and use its output.\n\
          - Never claim a service is healthy or logs are clean without reading live status/logs. Cite the command result.\n\
          - Verify cached profile values before destructive operations and refresh with local-harness-system-profile when needed.\n\
          {delegation}\
