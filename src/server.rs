@@ -12,7 +12,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header::{AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_TYPE}};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -95,6 +95,7 @@ pub async fn run(
         .route("/api/sessions/export", get(export_sessions))
         .route("/api/sessions/{id}/export", get(export_session))
         .route("/api/workspaces", get(list_workspaces).post(create_workspace))
+        .route("/api/workspaces/{id}", delete(delete_workspace))
         .route(
             "/api/sessions/{id}",
             get(get_session).patch(patch_session).delete(delete_session),
@@ -487,6 +488,47 @@ async fn create_workspace(
     {
         Ok(workspace) => Json(json!({ "workspace": workspace })).into_response(),
         Err(error) => (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
+}
+
+async fn delete_workspace(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    if id == "home" {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "the Home workspace cannot be deleted" }))).into_response();
+    }
+    match workspaces::delete(&state.data_dir, &id).await {
+        Ok(false) => (StatusCode::NOT_FOUND, Json(json!({ "error": "workspace not found" }))).into_response(),
+        Ok(true) => {
+            let home = workspaces::home_workspace(&state.config.workspace);
+            let mut moved = 0usize;
+            if let Ok((sessions, _)) = session::list_sessions(&state.data_dir).await {
+                for summary in sessions.iter().filter(|summary| summary.workspace == id) {
+                    if let Ok(existing) = Session::open(&state.data_dir, &summary.id).await {
+                        if existing
+                            .append(json!({
+                                "type": "workspace",
+                                "id": home.id,
+                                "name": home.name,
+                                "path": home.path,
+                            }))
+                            .await
+                            .is_ok()
+                        {
+                            moved += 1;
+                        }
+                    }
+                }
+            }
+            Json(json!({ "deleted": true, "moved_sessions": moved })).into_response()
+        }
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response(),
     }
 }
 

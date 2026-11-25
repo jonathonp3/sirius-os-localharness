@@ -77,6 +77,10 @@ body.sidebar-open { padding-left:350px; }
 .workspace-item { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; text-align:left; background:none; color:var(--text); border:1px solid transparent; border-radius:6px; padding:6px 7px; font:inherit; cursor:pointer; }
 .workspace-item:hover { background:var(--bg); }
 .workspace-item.active { background:var(--bg); border-color:var(--border); box-shadow:inset 3px 0 0 var(--accent); }
+.workspace-row { display:flex; align-items:stretch; gap:2px; width:100%; }
+.workspace-row .workspace-item { flex:1; width:auto; min-width:0; }
+.workspace-delete { background:none; color:var(--muted); border:1px solid transparent; border-radius:6px; width:28px; padding:0; font-size:16px; cursor:pointer; }
+.workspace-delete:hover { color:#ffb3b3; background:#2a1515; border-color:#5a2a2a; }
 .workspace-item strong { font-size:15px; font-weight:600; }
 .workspace-item span { font-size:14px; color:var(--muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sidebar-sep { height:1px; background:var(--border); margin:2px 0; }
@@ -996,7 +1000,22 @@ function renderWorkspaces() {
     path.textContent = workspace.path || '';
     item.append(name, path);
     item.addEventListener('click', () => selectWorkspace(workspace.id));
-    workspaceList.appendChild(item);
+    const row = document.createElement('div');
+    row.className = 'workspace-row';
+    row.appendChild(item);
+    if (!workspace.builtin) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'workspace-delete';
+      remove.textContent = '×';
+      remove.title = 'Delete workspace';
+      remove.addEventListener('click', (event) => {
+        event.stopPropagation();
+        deleteWorkspace(workspace.id, workspace.name || workspace.id);
+      });
+      row.appendChild(remove);
+    }
+    workspaceList.appendChild(row);
   }
 }
 
@@ -1039,6 +1058,36 @@ async function createWorkspace() {
     workspacePath.value = '';
     await refreshWorkspaces();
     selectWorkspace(data.workspace.id);
+  } catch (error) {
+    add('error', String(error));
+  }
+}
+
+async function deleteWorkspace(id, name) {
+  if (!confirm('Delete workspace "' + name + '"?\n\nIts chats will move to Home. The directory itself will not be deleted.')) return;
+  try {
+    const response = await fetch('/api/workspaces/' + encodeURIComponent(id) + '?token=' + encodeURIComponent(token), {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      add('error', await response.text());
+      return;
+    }
+    const data = await response.json();
+    if (currentWorkspaceId === id) {
+      currentWorkspaceId = null;
+      currentSessionId = null;
+      log.innerHTML = '';
+      await refreshWorkspaces();
+      await refreshSessions();
+      showLanding();
+    } else {
+      await refreshWorkspaces();
+      await refreshSessions();
+    }
+    if (data.moved_sessions) {
+      add('meta', 'moved ' + data.moved_sessions + ' chat(s) to Home');
+    }
   } catch (error) {
     add('error', String(error));
   }

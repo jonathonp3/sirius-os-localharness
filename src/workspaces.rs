@@ -121,3 +121,18 @@ pub async fn create(data_dir: &Path, home: &Path, name: &str, path: &str) -> Res
     save(data_dir, &store).await?;
     Ok(workspace)
 }
+
+
+pub async fn delete(data_dir: &Path, id: &str) -> Result<bool> {
+    if id == "home" {
+        bail!("the Home workspace cannot be deleted");
+    }
+    let mut store = load(data_dir).await?;
+    let before = store.workspaces.len();
+    store.workspaces.retain(|workspace| workspace.id != id);
+    if store.workspaces.len() == before {
+        return Ok(false);
+    }
+    save(data_dir, &store).await?;
+    Ok(true)
+}
