@@ -1167,7 +1167,11 @@ function renderHistory() {
     remove.type = 'button';
     remove.title = 'Delete chat';
     remove.textContent = '🗑';
-    remove.addEventListener('click', () => deleteSession(session.id));
+    remove.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteSession(session.id);
+    });
 
     actions.append(pin, rename, exportButton, remove);
     item.append(title, meta, actions);
@@ -1207,9 +1211,23 @@ async function deleteSession(id) {
       return;
     }
     if (currentSessionId === id) {
+      if (controller) {
+        controller.abort();
+        controller = null;
+      }
       currentSessionId = null;
+      assistantEl = null;
+      openTool = null;
+      finished = true;
       log.innerHTML = '';
       add('meta', 'new chat');
+      if (currentWorkspaceId) {
+        restoreComposer();
+      } else {
+        showLanding();
+      }
+      sendEl.disabled = false;
+      stopEl.disabled = true;
       setStatus('ready');
     }
     await refreshSessions();
@@ -1232,9 +1250,20 @@ async function deleteSelected() {
     }
   }
   if (ids.includes(currentSessionId)) {
+    if (controller) {
+      controller.abort();
+      controller = null;
+    }
     currentSessionId = null;
+    assistantEl = null;
+    openTool = null;
+    finished = true;
     log.innerHTML = '';
     add('meta', 'new chat');
+    if (currentWorkspaceId) restoreComposer();
+    else showLanding();
+    sendEl.disabled = false;
+    stopEl.disabled = true;
     setStatus('ready');
   }
   selectedSessions.clear();
