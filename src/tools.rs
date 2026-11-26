@@ -122,6 +122,7 @@ impl ToolSet {
         }
         if self.policy.allows_write() {
             names.push("write_file".to_string());
+            names.push("append_file".to_string());
         }
         if self.policy.allows_shell() {
             names.push("bash".to_string());
@@ -205,11 +206,30 @@ impl ToolSet {
                 "type": "function",
                 "function": {
                     "name": "read_file",
-                    "description": "Read a UTF-8 file from the workspace.",
+                    "description": "Read a UTF-8 file from the workspace, optionally a character range.",
                     "parameters": {
                         "type": "object",
-                        "properties": { "path": { "type": "string", "description": "Workspace-relative file path" } },
+                        "properties": {
+                            "path": { "type": "string", "description": "Workspace-relative file path" },
+                            "offset": { "type": "integer", "description": "Character offset (default 0)" },
+                            "limit": { "type": "integer", "description": "Characters to return (default 100000, max 100000)" }
+                        },
                         "required": ["path"]
+                    }
+                }
+            }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "append_file",
+                    "description": "Append UTF-8 content to a workspace file, creating it if needed. Use for long documents written in chunks.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Workspace-relative file path" },
+                            "content": { "type": "string", "description": "Text to append" }
+                        },
+                        "required": ["path", "content"]
                     }
                 }
             }),
@@ -575,7 +595,39 @@ impl ToolSet {
                 let text = tokio::fs::read_to_string(&path)
                     .await
                     .with_context(|| format!("reading {}", path.display()))?;
-                Ok(truncate(&text))
+                let offset = arguments.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let limit = arguments
+                    .get("limit")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(100_000)
+                    .min(100_000) as usize;
+                let chars: Vec<char> = text.chars().collect();
+                let start = offset.min(chars.len());
+                let end = (start + limit).min(chars.len());
+                let slice: String = chars[start..end].iter().collect();
+                if start == 0 && end == chars.len() {
+                    Ok(truncate(&slice))
+                } else {
+                    Ok(format!("file {}: chars {start}..{end} of {}\n{}", path.display(), chars.len(), slice))
+                }
+            }
+            "append_file" => {
+                if !self.policy.allows_write() {
+                    bail!("append_file is disabled by the tool policy (use --allow-write or --tool-policy write)");
+                }
+                let path = self.writable(&string_arg(&arguments, "path")?)?;
+                let content = string_arg(&arguments, "content")?;
+                if let Some(parent) = path.parent() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+                let mut file = tokio::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                    .await
+                    .with_context(|| format!("opening {}", path.display()))?;
+                file.write_all(content.as_bytes()).await?;
+                Ok(format!("appended {} bytes to {}", content.len(), path.display()))
             }
             "write_file" => {
                 if !self.policy.allows_write() {
