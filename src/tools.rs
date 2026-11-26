@@ -108,6 +108,7 @@ impl ToolSet {
             names.push("bash".to_string());
             names.push("host_bash".to_string());
             names.push("log_check".to_string());
+            names.push("man_page".to_string());
             for plugin in self.plugins.iter() {
                 names.push(plugin_tool_name(&plugin.name));
             }
@@ -229,6 +230,21 @@ impl ToolSet {
                             "lines": { "type": "integer", "description": "Recent lines to show (default 120, max 500)" }
                         },
                         "required": ["unit"]
+                    }
+                }
+            }));
+            definitions.push(json!({
+                "type": "function",
+                "function": {
+                    "name": "man_page",
+                    "description": "Read a command's local man page or --help output. Use before relying on unfamiliar commands or flags, especially on a new Fedora release.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": { "type": "string", "description": "Command name, e.g. journalctl or systemctl" },
+                            "section": { "type": "string", "description": "Optional man section, e.g. 1 or 5" }
+                        },
+                        "required": ["command"]
                     }
                 }
             }));
@@ -381,6 +397,42 @@ impl ToolSet {
                 }
                 entries.sort();
                 Ok(truncate(&entries.join("\n")))
+            }
+            "man_page" => {
+                if !self.policy.allows_shell() {
+                    bail!("man_page is disabled by the tool policy (use --tool-policy full)");
+                }
+                let verb = string_arg(&arguments, "command")?;
+                if !verb.chars().all(|c| c.is_ascii_alphanumeric() || "-_.+".contains(c)) {
+                    bail!("invalid command name");
+                }
+                if !command_available(&verb, true).await? {
+                    bail!("command `{verb}` is not available on the host");
+                }
+                let section = arguments
+                    .get("section")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                if !section.chars().all(|c| c.is_ascii_digit()) {
+                    bail!("invalid man section");
+                }
+                let target = if section.is_empty() {
+                    verb.clone()
+                } else {
+                    format!("{} {}", section, verb)
+                };
+                let man = run_bash(&format!("man -P cat {}", target), true, &self.root).await?;
+                let man_text = String::from_utf8_lossy(&man.stdout).to_string();
+                if man.status.success() && !man_text.trim().is_empty() {
+                    return Ok(truncate(&format!("SOURCE: man {}\n\n{}", target, man_text.trim())));
+                }
+                let help = run_bash(&format!("{} --help", verb), true, &self.root).await?;
+                let help_text = String::from_utf8_lossy(&help.stdout).to_string();
+                if help_text.trim().is_empty() {
+                    bail!("no man page and no --help output for `{verb}`");
+                }
+                Ok(truncate(&format!("SOURCE: {} --help\n\n{}", verb, help_text.trim())))
             }
             "log_check" => {
                 if !self.policy.allows_shell() {

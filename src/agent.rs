@@ -523,6 +523,8 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
            5. If VERDICT is DEGRADED or FAILED, do not call the service normal.\n\
            6. Only after steps 1-5, summarize; do not summarize the first lines of journalctl.\n\
          - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
+         - Before relying on unfamiliar commands or flags, inspect the local environment documentation with man_page. Fedora changes between releases; do not assume flags from memory.\n\
+         - Use the persistent system profile's OS version as context, but prefer local man pages and --help for exact options.\n\
          - Oversized-log/context procedure (mandatory):\n\
            1. Use log_check for journal/log questions; never dump the full journal.\n\
            2. Start with a recent window (24 hours). Recent logs and current tool results take priority over historical summaries.\n\
