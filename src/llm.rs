@@ -88,19 +88,34 @@ pub struct Client {
     http: reqwest::Client,
     endpoint: String,
     model: String,
+    api_key: Option<String>,
+    remote: bool,
 }
 
 impl Client {
-    pub fn new(endpoint: &str, model: &str) -> Result<Self> {
+    pub fn new(endpoint: &str, model: &str, api_key: Option<&str>, remote: bool) -> Result<Self> {
         let http = reqwest::Client::builder().build().context("building HTTP client")?;
         Ok(Self {
             http,
             endpoint: endpoint.trim_end_matches('/').to_string(),
             model: model.to_string(),
+            api_key: api_key.map(ToString::to_string),
+            remote,
         })
     }
 
+    fn chat_url(&self) -> String {
+        if self.endpoint.ends_with("/v1") {
+            format!("{}/chat/completions", self.endpoint)
+        } else {
+            format!("{}/v1/chat/completions", self.endpoint)
+        }
+    }
+
     pub async fn count_tokens(&self, messages: &[Message], tools: &[Value]) -> Result<usize> {
+        if self.remote {
+            bail!("exact token counting is unavailable for remote providers");
+        }
         let root = self.endpoint.trim_end_matches('/').trim_end_matches("/v1");
         let url = format!("{root}/tokenize");
         let content = serde_json::to_string(&json!({ "messages": messages, "tools": tools }))
@@ -147,18 +162,23 @@ impl Client {
             "temperature": temperature,
             "stream": true,
             "stream_options": { "include_usage": true },
-            "chat_template_kwargs": { "enable_thinking": think },
         });
+        if !self.remote {
+            body["chat_template_kwargs"] = json!({ "enable_thinking": think });
+        }
         if !tools.is_empty() {
             body["tools"] = Value::Array(tools.to_vec());
             body["tool_choice"] = json!("auto");
         }
 
-        let url = format!("{}/v1/chat/completions", self.endpoint);
-        let response = self
-            .http
-            .post(&url)
-            .json(&body)
+        let url = self.chat_url();
+        let mut request = self.http.post(&url).json(&body);
+        if let Some(key) = &self.api_key {
+            if !key.is_empty() {
+                request = request.bearer_auth(key);
+            }
+        }
+        let response = request
             .send()
             .await
             .with_context(|| format!("POST {url}"))?;

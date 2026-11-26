@@ -34,6 +34,8 @@ pub trait EventSink: Send {
 pub struct Config {
     pub endpoint: String,
     pub model: String,
+    pub api_key: Option<String>,
+    pub remote: bool,
     pub workspace: PathBuf,
     pub data_dir: PathBuf,
     pub max_steps: usize,
@@ -66,7 +68,7 @@ pub async fn run(
     history: Vec<Message>,
     sink: &mut dyn EventSink,
 ) -> Result<Outcome> {
-    let client = Client::new(&config.endpoint, &config.model)?;
+    let client = Client::new(&config.endpoint, &config.model, config.api_key.as_deref(), config.remote)?;
     let mut tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run, config.web);
     tools.set_session_path(session.path().to_path_buf());
     tools.set_history_dir(config.data_dir.join("file-history"));

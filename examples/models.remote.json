@@ -1,0 +1,23 @@
+{
+  "default": "deepseek-chat",
+  "models": {
+    "deepseek-chat": {
+      "model": "deepseek-chat",
+      "endpoint": "https://api.deepseek.com",
+      "provider": "openai",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "context_limit": 65536,
+      "max_tokens": 4096,
+      "tool_policy": "full"
+    },
+    "kimi-k2": {
+      "model": "kimi-k2-0711-preview",
+      "endpoint": "https://api.moonshot.ai/v1",
+      "provider": "openai",
+      "api_key_env": "MOONSHOT_API_KEY",
+      "context_limit": 131072,
+      "max_tokens": 4096,
+      "tool_policy": "full"
+    }
+  }
+}

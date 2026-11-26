@@ -38,6 +38,9 @@ struct Cli {
     /// Model id; overrides the profile.
     #[arg(long, global = true, env = "HARNESS_MODEL")]
     model: Option<String>,
+    /// Environment variable holding the API key for remote OpenAI-compatible providers.
+    #[arg(long, global = true, env = "HARNESS_API_KEY_ENV")]
+    api_key_env: Option<String>,
     #[arg(long, global = true, env = "HARNESS_WORKSPACE")]
     workspace: Option<PathBuf>,
     #[arg(long, global = true, env = "HARNESS_DATA_DIR")]
@@ -257,6 +260,21 @@ async fn main() -> Result<()> {
         .temperature
         .or_else(|| profile.as_ref().and_then(|profile| profile.temperature))
         .unwrap_or(0.0);
+    let api_key_env = cli
+        .api_key_env
+        .clone()
+        .or_else(|| profile.as_ref().and_then(|profile| profile.api_key_env.clone()));
+    let api_key = api_key_env
+        .as_deref()
+        .and_then(|name| std::env::var(name).ok())
+        .filter(|value| !value.is_empty());
+    let remote = profile
+        .as_ref()
+        .and_then(|profile| profile.provider.as_deref())
+        .map(|provider| provider == "openai" || provider == "remote")
+        .unwrap_or(false)
+        || api_key_env.is_some()
+        || (!endpoint.contains("127.0.0.1") && !endpoint.contains("localhost"));
     let profile_label = profile_name.clone().unwrap_or_else(|| "none".to_string());
     let base_policy = match &cli.tool_policy {
         Some(name) => tools::ToolPolicy::parse(name).with_context(|| {
@@ -327,7 +345,7 @@ async fn main() -> Result<()> {
             } else {
                 base_policy
             };
-            let governor = load_governor(&endpoint, &model, context_limit, max_tokens).await;
+            let governor = load_governor(&endpoint, &model, context_limit, max_tokens, remote).await;
             let mut history = Vec::new();
             let session = if let Some(id) = resume {
                 let session = session::Session::open(&data_dir, &id).await?;
@@ -352,6 +370,8 @@ async fn main() -> Result<()> {
             let config = agent::Config {
                 endpoint,
                 model,
+                api_key: api_key.clone(),
+                remote,
                 workspace,
                 max_steps,
                 max_tokens,
@@ -389,11 +409,13 @@ async fn main() -> Result<()> {
             } else {
                 base_policy
             };
-            let governor = load_governor(&endpoint, &model, context_limit, max_tokens).await;
+            let governor = load_governor(&endpoint, &model, context_limit, max_tokens, remote).await;
             let concurrency = concurrency.unwrap_or(governor.slots.max(1)).max(1);
             let config = agent::Config {
                 endpoint,
                 model,
+                api_key: api_key.clone(),
+                remote,
                 workspace,
                 max_steps,
                 max_tokens,
@@ -427,11 +449,13 @@ async fn main() -> Result<()> {
             } else {
                 base_policy
             };
-            let governor = load_governor(&endpoint, &model, context_limit, max_tokens).await;
+            let governor = load_governor(&endpoint, &model, context_limit, max_tokens, remote).await;
             let session = session::Session::create(&data_dir, &model).await?;
             let config = agent::Config {
                 endpoint,
                 model,
+                api_key: api_key.clone(),
+                remote,
                 workspace,
                 data_dir: data_dir.clone(),
                 max_steps,
@@ -595,13 +619,22 @@ async fn main() -> Result<()> {
                 &scopes,
                 &profile_label,
                 &registry_path,
+                remote,
+                api_key.is_some(),
             )
             .await
         }
     }
 }
 
-async fn load_governor(endpoint: &str, model: &str, context_limit: usize, max_tokens: u32) -> governor::Governor {
+async fn load_governor(endpoint: &str, model: &str, context_limit: usize, max_tokens: u32, remote: bool) -> governor::Governor {
+    if remote {
+        return governor::Governor::new(
+            governor::ModelInfo { model: model.to_string(), n_ctx: context_limit, slots: 1 },
+            context_limit,
+            max_tokens,
+        );
+    }
     match governor::probe_model(endpoint, model).await {
         Ok(info) => governor::Governor::new(info, context_limit, max_tokens),
         Err(error) => {
@@ -624,16 +657,30 @@ async fn doctor(
     scopes: &tools::ToolScopes,
     profile: &str,
     registry_path: &std::path::Path,
+    remote: bool,
+    key_configured: bool,
 ) -> Result<()> {
     let hardware = governor::Hardware::probe();
-    let health = reqwest::get(format!("{}/health", endpoint.trim_end_matches('/')))
-        .await
-        .map(|response| response.status().is_success())
-        .unwrap_or(false);
-    let info = governor::probe_model(endpoint, model).await;
+    let health = if remote {
+        true
+    } else {
+        reqwest::get(format!("{}/health", endpoint.trim_end_matches('/')))
+            .await
+            .map(|response| response.status().is_success())
+            .unwrap_or(false)
+    };
+    let info = if remote {
+        Ok(governor::ModelInfo { model: model.to_string(), n_ctx: context_limit, slots: 1 })
+    } else {
+        governor::probe_model(endpoint, model).await
+    };
 
     println!("profile: {profile} ({})", registry_path.display());
     println!("endpoint: {endpoint}");
+    println!("provider: {}", if remote { "remote (OpenAI-compatible)" } else { "local llama.cpp" });
+    if remote {
+        println!("api key: {}", if key_configured { "configured" } else { "missing" });
+    }
     println!("health: {}", if health { "ok" } else { "unreachable" });
     if let Err(error) = &info {
         println!("model probe: {error:#}");

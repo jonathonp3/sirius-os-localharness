@@ -12,6 +12,10 @@ pub struct Profile {
     #[serde(default)]
     pub endpoint: Option<String>,
     #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+    #[serde(default)]
     pub context_limit: Option<usize>,
     #[serde(default)]
     pub max_tokens: Option<u32>,
