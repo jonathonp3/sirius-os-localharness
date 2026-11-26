@@ -1,0 +1,30 @@
+{
+  "name": "markdown-formatter",
+  "version": "1.0.0",
+  "revision": 1,
+  "api": "1",
+  "min_harness": "0.1.0",
+  "description": "Markdown formatting skill and style guide",
+  "permissions": {
+    "network": false,
+    "write": "none",
+    "host": false,
+    "shell": false
+  },
+  "tools": [
+    {
+      "name": "markdown_style_guide",
+      "description": "Return the local Markdown formatting style guide.",
+      "command": "cat SKILL.md",
+      "parameters": {},
+      "required": [],
+      "sandbox": false,
+      "permissions": {
+        "network": false,
+        "write": "none",
+        "host": false,
+        "shell": false
+      }
+    }
+  ]
+}
