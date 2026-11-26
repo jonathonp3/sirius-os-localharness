@@ -562,7 +562,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - The system profile is a point-in-time snapshot, not proof of current state. If the user asks for 'now', 'current', 'live', 'recent', 'logs', 'inspect', or 'check usage', run a live command with the correct bash tool and use its output.\n\
          - Never claim a service is healthy or logs are clean without reading live status/logs. Cite the command result.\n\
          - Journal runbook (mandatory):\n\
-           1. Call log_check with unit and since (default 24 hours ago).\n\
+           1. Call log_check with unit and since (default 24 hours ago). It returns only REPORT unless details=true.\n\
            2. Read VERDICT first, then SERVICE: ActiveState, NRestarts, ActiveEnterTimestamp.\n\
            3. Read APPLICATION ERROR MARKERS and WARNINGS/ERRORS.\n\
            4. Report every error/failed/exceeded/panic marker, even if the service is active.\n\

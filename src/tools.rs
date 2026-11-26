@@ -253,7 +253,8 @@ impl ToolSet {
                         "properties": {
                             "unit": { "type": "string", "description": "Systemd user unit, e.g. llama-server" },
                             "since": { "type": "string", "description": "journalctl --since value (default: 24 hours ago)" },
-                            "lines": { "type": "integer", "description": "Recent lines to show (default 120, max 500)" }
+                            "lines": { "type": "integer", "description": "Recent lines to show (default 120, max 500)" },
+                            "details": { "type": "boolean", "description": "Include recent logs and raw error sections (default false; REPORT only)" }
                         },
                         "required": ["unit"]
                     }
@@ -590,11 +591,18 @@ impl ToolSet {
                     .filter(|line| {
                         let lower = line.to_ascii_lowercase();
                         line.contains(" E srv")
-                            || line.contains(" W srv")
                             || lower.contains("error")
                             || lower.contains("failed")
                             || lower.contains("exceed")
                             || lower.contains("panic")
+                    })
+                    .take(30)
+                    .collect();
+                let app_warnings: Vec<&str> = recent_text
+                    .lines()
+                    .filter(|line| {
+                        line.contains(" W srv")
+                            && !app_errors.iter().any(|error| std::ptr::eq(*error, *line))
                     })
                     .take(30)
                     .collect();
@@ -605,6 +613,11 @@ impl ToolSet {
                 } else {
                     app_errors.join("\n")
                 };
+                let app_warnings_text = if app_warnings.is_empty() {
+                    "-- no application warning markers --".to_string()
+                } else {
+                    app_warnings.join("\n")
+                };
                 let active = status_text.lines().any(|line| line.trim() == "ActiveState=active");
                 let restarts = status_text
                     .lines()
@@ -614,7 +627,7 @@ impl ToolSet {
                 let has_warnings = !warnings_text.contains("-- No entries --") && !warnings_text.is_empty();
                 let verdict = if !active {
                     "FAILED"
-                } else if restarts > 0 || !app_errors.is_empty() || has_warnings {
+                } else if restarts > 0 || !app_errors.is_empty() || !app_warnings.is_empty() || has_warnings {
                     "DEGRADED"
                 } else {
                     "OK"
@@ -640,9 +653,32 @@ impl ToolSet {
                                 text.push_str(&short);
                                 text.push('\n');
                             }
+                        }
+                        if !app_warnings.is_empty() {
+                            text.push_str(&format!(" {} application warning marker(s) were found.", app_warnings.len()));
+                            text.push_str("\nRecent application warnings:\n");
+                            for line in app_warnings.iter().take(3) {
+                                let original = line.trim();
+                                let mut short: String = original.chars().take(240).collect();
+                                if original.chars().count() > 240 {
+                                    short.push('…');
+                                }
+                                text.push_str("- ");
+                                text.push_str(&short);
+                                text.push('\n');
+                            }
+                        }
+                        if has_warnings && app_errors.is_empty() && app_warnings.is_empty() {
+                            text.push_str(" Journal warnings were found in the selected window.");
+                        }
+                        let context_error = app_errors.iter().any(|line| {
+                            let lower = line.to_ascii_lowercase();
+                            lower.contains("exceed") || lower.contains("context size")
+                        });
+                        if context_error {
                             text.push_str("Do not restart for request/context-size errors; reduce the request or start a fresh chat.");
-                        } else if has_warnings {
-                            text.push_str(" Journal warnings or errors were found in the selected window.");
+                        } else {
+                            text.push_str("Inspect details if these warnings recur; do not restart unless the unit itself is failing.");
                         }
                         text
                     }
@@ -650,13 +686,18 @@ impl ToolSet {
                         "The systemd user unit `{unit}` is active, with NRestarts={restarts}. Verdict: OK. No application error markers or journal warnings were found in the selected window ({since})."
                     ),
                 };
+                let details = arguments.get("details").and_then(Value::as_bool).unwrap_or(false);
+                if !details {
+                    return Ok(truncate(&format!("REPORT\n{report}\n")));
+                }
                 Ok(truncate(&format!(
-                    "REPORT\n{}\n\nVERDICT\n{}\nActive: {}\nNRestarts: {}\nApplication error markers: {}\nJournal warnings/errors: {}\n\nSERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (journal priority warning and above)\n{}\n\nAPPLICATION ERROR MARKERS (from recent output)\n{}",
+                    "REPORT\n{}\n\nVERDICT\n{}\nActive: {}\nNRestarts: {}\nApplication error markers: {}\nApplication warning markers: {}\nJournal warnings/errors: {}\n\nSERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (journal priority warning and above)\n{}\n\nAPPLICATION ERROR MARKERS (from recent output)\n{}\n\nAPPLICATION WARNING MARKERS (from recent output)\n{}",
                     report,
                     verdict,
                     active,
                     restarts,
                     app_errors.len(),
+                    app_warnings.len(),
                     has_warnings,
                     status_text,
                     lines,
@@ -664,6 +705,7 @@ impl ToolSet {
                     recent_text.trim(),
                     warnings_text,
                     app_errors_text,
+                    app_warnings_text,
                 )))
             }
             "bash" | "host_bash" => {
