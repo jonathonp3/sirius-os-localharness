@@ -297,15 +297,12 @@ fn stage_tool_results(messages: &mut [Message]) {
         .map(|(index, _)| index)
         .collect();
     let Some(&last) = indices.last() else { return };
-    for index in indices {
+    for (ordinal, index) in indices.into_iter().enumerate() {
         let Some(content_len) = messages[index].content.as_ref().map(|content| content.chars().count()) else { continue };
         if content_len <= 8_000 {
             continue;
         }
-        let handle = messages[index].tool_call_id.clone().unwrap_or_default();
-        if handle.is_empty() {
-            continue;
-        }
+        let handle = format!("tool-{}", ordinal + 1);
         if index == last {
             let content = messages[index].content.take().unwrap_or_default();
             let mut trimmed: String = content.chars().take(12_000).collect();

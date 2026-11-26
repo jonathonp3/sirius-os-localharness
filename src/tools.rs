@@ -138,11 +138,11 @@ impl ToolSet {
                 "type": "function",
                 "function": {
                     "name": "tool_result_get",
-                    "description": "Retrieve an earlier tool result from the session. Use the handle shown in the eviction stub. For large results, page with offset and limit.",
+                    "description": "Retrieve an earlier tool result from the session. Use the short handle shown in the eviction stub (for example tool-1). For large results, page with offset and limit.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "handle": { "type": "string", "description": "Tool call id shown in the eviction stub" },
+                            "handle": { "type": "string", "description": "Short handle shown in the eviction stub, e.g. tool-1" },
                             "offset": { "type": "integer", "description": "Character offset (default 0)" },
                             "limit": { "type": "integer", "description": "Characters to return (default 12000, max 20000)" }
                         },
@@ -404,6 +404,10 @@ impl ToolSet {
                 let text = tokio::fs::read_to_string(path)
                     .await
                     .with_context(|| format!("reading {}", path.display()))?;
+                let short_index = handle
+                    .strip_prefix("tool-")
+                    .and_then(|number| number.parse::<usize>().ok());
+                let mut ordinal = 0usize;
                 for line in text.lines() {
                     let Ok(value) = serde_json::from_str::<Value>(line) else { continue };
                     if value.get("type").and_then(Value::as_str) != Some("message") {
@@ -413,7 +417,13 @@ impl ToolSet {
                     if message.get("role").and_then(Value::as_str) != Some("tool") {
                         continue;
                     }
-                    if message.get("tool_call_id").and_then(Value::as_str) != Some(handle.as_str()) {
+                    ordinal += 1;
+                    let matches = if let Some(index) = short_index {
+                        ordinal == index
+                    } else {
+                        message.get("tool_call_id").and_then(Value::as_str) == Some(handle.as_str())
+                    };
+                    if !matches {
                         continue;
                     }
                     if let Some(content) = message.get("content").and_then(Value::as_str) {
