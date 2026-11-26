@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use ed25519_dalek::Verifier;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Plugin {
@@ -142,6 +143,31 @@ fn sha256_hex(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+fn verify_signature(path: &Path, bytes: &[u8]) -> Result<()> {
+    let file_name = path.file_name().and_then(|name| name.to_str()).context("signature path")?;
+    let signature_path = path.with_file_name(format!("{file_name}.sig"));
+    if !signature_path.is_file() {
+        return Ok(());
+    }
+    let key_hex = std::env::var("HARNESS_PLUGIN_PUBKEY")
+        .context("signed plugin requires HARNESS_PLUGIN_PUBKEY")?;
+    let key_bytes = hex::decode(key_hex.trim()).context("decoding HARNESS_PLUGIN_PUBKEY")?;
+    let key_bytes: [u8; 32] = key_bytes.try_into().map_err(|_| anyhow::anyhow!("plugin public key must be 32 bytes"))?;
+    let key = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes).context("invalid plugin public key")?;
+    let signature_hex = std::fs::read_to_string(&signature_path)
+        .with_context(|| format!("reading {}", signature_path.display()))?;
+    let signature = hex::decode(signature_hex.trim()).context("decoding plugin signature")?;
+    let signature = ed25519_dalek::Signature::from_slice(&signature).context("invalid plugin signature length")?;
+    key.verify(bytes, &signature).map_err(|_| anyhow::anyhow!("plugin signature verification failed"))?;
+    Ok(())
+}
+
+fn read_signed(path: &Path) -> Result<Vec<u8>> {
+    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    verify_signature(path, &bytes)?;
+    Ok(bytes)
+}
+
 fn validate(plugin: &Plugin, names: &mut std::collections::HashSet<String>) -> Result<()> {
     let valid = !plugin.name.is_empty()
         && plugin
@@ -177,8 +203,8 @@ pub fn load(path: &Path) -> Result<Vec<Plugin>> {
     if path.is_dir() {
         let direct = path.join("plugin.json");
         if direct.is_file() {
-            let text = std::fs::read_to_string(&direct)
-                .with_context(|| format!("reading {}", direct.display()))?;
+            let bytes = read_signed(&direct)?;
+            let text = String::from_utf8(bytes).context("plugin.json is not UTF-8")?;
             let value: serde_json::Value = serde_json::from_str(&text)
                 .with_context(|| format!("parsing {}", direct.display()))?;
             if value.get("tools").is_some() {
@@ -254,14 +280,12 @@ fn load_packages(root: &Path) -> Result<Vec<Plugin>> {
     let mut plugins = Vec::new();
     let mut names = std::collections::HashSet::new();
     if manifest_path.is_file() {
-        let raw = std::fs::read_to_string(&manifest_path)
-            .with_context(|| format!("reading {}", manifest_path.display()))?;
+        let raw = String::from_utf8(read_signed(&manifest_path)?).context("manifest is not UTF-8")?;
         let manifest: Manifest = serde_json::from_str(&raw)
             .with_context(|| format!("parsing {}", manifest_path.display()))?;
         for package in manifest.packages {
             let plugin_path = root.join(&package.path);
-            let bytes = std::fs::read(&plugin_path)
-                .with_context(|| format!("reading {}", plugin_path.display()))?;
+            let bytes = read_signed(&plugin_path)?;
             let actual = sha256_hex(&bytes);
             if actual != package.sha256 {
                 bail!("plugin package `{}` failed SHA-256 verification", package.name);
@@ -290,8 +314,7 @@ fn load_packages(root: &Path) -> Result<Vec<Plugin>> {
         if !plugin_path.is_file() {
             continue;
         }
-        let text = std::fs::read_to_string(&plugin_path)
-            .with_context(|| format!("reading {}", plugin_path.display()))?;
+        let text = String::from_utf8(read_signed(&plugin_path)?).context("plugin.json is not UTF-8")?;
         let value: serde_json::Value = serde_json::from_str(&text)
             .with_context(|| format!("parsing {}", plugin_path.display()))?;
         if value.get("tools").is_some() {
