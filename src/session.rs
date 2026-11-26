@@ -60,6 +60,10 @@ impl Session {
         Ok(Self { id: id.to_string(), file })
     }
 
+    pub fn path(&self) -> &Path {
+        &self.file
+    }
+
     pub async fn load_messages(&self) -> Result<Vec<Message>> {
         let text = tokio::fs::read_to_string(&self.file)
             .await

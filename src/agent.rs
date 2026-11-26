@@ -16,6 +16,8 @@ use crate::llm::{Client, Message, Usage};
 use crate::session::Session;
 use crate::tools::{ToolPolicy, ToolScopes, ToolSet};
 
+const JOURNAL_SKILL: &str = include_str!("skills/journal-check.md");
+
 /// Receives streaming progress. CLI prints it; the server forwards it as SSE.
 pub trait EventSink: Send {
     fn session(&mut self, _id: &str) {}
@@ -65,7 +67,8 @@ pub async fn run(
     sink: &mut dyn EventSink,
 ) -> Result<Outcome> {
     let client = Client::new(&config.endpoint, &config.model)?;
-    let tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run, config.web);
+    let mut tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run, config.web);
+    tools.set_session_path(session.path().to_path_buf());
     let can_delegate = config.depth < config.max_depth;
     let mut definitions = tools.definitions();
     let mut names = tools.names();
@@ -74,6 +77,8 @@ pub async fn run(
         names.push("subagent".to_string());
     }
     let mut system = system_prompt(&config.workspace, &names, config.depth);
+    system.push_str("\n\nLocal skill `journal-check`:\n");
+    system.push_str(JOURNAL_SKILL);
     if config.dry_run {
         system.push_str(
             "\nDry-run mode is active: tool results beginning with `dry-run:` are previews. Nothing was executed; never claim those actions happened.\n",
@@ -153,6 +158,7 @@ pub async fn run(
             }
         }
 
+        stage_tool_results(&mut messages);
         let report = config.governor.fit(&mut messages, &definitions);
         if report.changed() {
             sink.notice(&format!("context: {}", report.summary()));
@@ -163,6 +169,17 @@ pub async fn run(
                 report.estimate,
                 report.budget
             );
+        }
+        if report.estimate * 10 >= report.budget * 8 {
+            if let Ok(exact) = client.count_tokens(&messages, &definitions).await {
+                if exact > report.budget {
+                    bail!(
+                        "exact prompt ({} tokens) exceeds the local budget ({}). Reduce pasted content or old logs, start a new chat, or raise --context-limit.",
+                        exact,
+                        report.budget
+                    );
+                }
+            }
         }
 
         {
@@ -271,6 +288,38 @@ pub async fn run(
     bail!("reached max_steps={} without a final answer", config.max_steps)
 }
 
+
+fn stage_tool_results(messages: &mut [Message]) {
+    let indices: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, message)| message.role == "tool")
+        .map(|(index, _)| index)
+        .collect();
+    let Some(&last) = indices.last() else { return };
+    for index in indices {
+        let Some(content_len) = messages[index].content.as_ref().map(|content| content.chars().count()) else { continue };
+        if content_len <= 8_000 {
+            continue;
+        }
+        let handle = messages[index].tool_call_id.clone().unwrap_or_default();
+        if handle.is_empty() {
+            continue;
+        }
+        if index == last {
+            let content = messages[index].content.take().unwrap_or_default();
+            let mut trimmed: String = content.chars().take(12_000).collect();
+            trimmed.push_str(&format!(
+                "\n...[truncated; full output available with tool_result_get handle \"{handle}\"]"
+            ));
+            messages[index].content = Some(trimmed);
+        } else {
+            messages[index].content = Some(format!(
+                "[tool result evicted to save context; full output is stored in this session. Call tool_result_get with handle \"{handle}\".]"
+            ));
+        }
+    }
+}
 
 /// Summarize all turns before the latest user message, then replace them with
 /// one summary message. Returns the summary when compaction happened.

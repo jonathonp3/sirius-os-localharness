@@ -80,6 +80,7 @@ pub struct ToolSet {
     scopes: ToolScopes,
     dry_run: bool,
     web: bool,
+    session_path: Option<PathBuf>,
 }
 
 impl ToolSet {
@@ -92,11 +93,19 @@ impl ToolSet {
         dry_run: bool,
         web: bool,
     ) -> Self {
-        Self { root, policy, plugins, mcp, scopes, dry_run, web }
+        Self { root, policy, plugins, mcp, scopes, dry_run, web, session_path: None }
+    }
+
+    pub fn set_session_path(&mut self, path: PathBuf) {
+        self.session_path = Some(path);
     }
 
     pub fn names(&self) -> Vec<String> {
-        let mut names = vec!["read_file".to_string(), "list_dir".to_string()];
+        let mut names = vec![
+            "read_file".to_string(),
+            "list_dir".to_string(),
+            "tool_result_get".to_string(),
+        ];
         if self.web {
             names.push("web_search".to_string());
             names.push("web_fetch".to_string());
@@ -109,6 +118,7 @@ impl ToolSet {
             names.push("host_bash".to_string());
             names.push("log_check".to_string());
             names.push("man_page".to_string());
+            names.push("model_check".to_string());
             for plugin in self.plugins.iter() {
                 names.push(plugin_tool_name(&plugin.name));
             }
@@ -124,6 +134,20 @@ impl ToolSet {
 
     pub fn definitions(&self) -> Vec<Value> {
         let mut definitions = vec![
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "tool_result_get",
+                    "description": "Retrieve the full output of an earlier tool call that was evicted from the model context. Use the handle shown in the eviction stub.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "handle": { "type": "string", "description": "Tool call id shown in the eviction stub" }
+                        },
+                        "required": ["handle"]
+                    }
+                }
+            }),
             json!({
                 "type": "function",
                 "function": {
@@ -248,6 +272,20 @@ impl ToolSet {
                     }
                 }
             }));
+            definitions.push(json!({
+                "type": "function",
+                "function": {
+                    "name": "model_check",
+                    "description": "Check a GGUF model file's size against available VRAM and RAM. Use before choosing or serving a local model.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Absolute path to the GGUF file" }
+                        },
+                        "required": ["path"]
+                    }
+                }
+            }));
             for plugin in self.plugins.iter() {
                 definitions.push(json!({
                     "type": "function",
@@ -355,6 +393,33 @@ impl ToolSet {
                 }
                 crate::web::fetch(&string_arg(&arguments, "url")?).await
             }
+            "tool_result_get" => {
+                let handle = string_arg(&arguments, "handle")?;
+                let path = self
+                    .session_path
+                    .as_ref()
+                    .context("tool_result_get has no session path")?;
+                let text = tokio::fs::read_to_string(path)
+                    .await
+                    .with_context(|| format!("reading {}", path.display()))?;
+                for line in text.lines() {
+                    let Ok(value) = serde_json::from_str::<Value>(line) else { continue };
+                    if value.get("type").and_then(Value::as_str) != Some("message") {
+                        continue;
+                    }
+                    let Some(message) = value.get("message") else { continue };
+                    if message.get("role").and_then(Value::as_str) != Some("tool") {
+                        continue;
+                    }
+                    if message.get("tool_call_id").and_then(Value::as_str) != Some(handle.as_str()) {
+                        continue;
+                    }
+                    if let Some(content) = message.get("content").and_then(Value::as_str) {
+                        return Ok(content.to_string());
+                    }
+                }
+                bail!("no stored tool result with handle `{handle}`");
+            }
             "read_file" => {
                 let path = self.existing(&string_arg(&arguments, "path")?)?;
                 let text = tokio::fs::read_to_string(&path)
@@ -397,6 +462,27 @@ impl ToolSet {
                 }
                 entries.sort();
                 Ok(truncate(&entries.join("\n")))
+            }
+            "model_check" => {
+                let path = PathBuf::from(string_arg(&arguments, "path")?);
+                let metadata = tokio::fs::metadata(&path)
+                    .await
+                    .with_context(|| format!("reading {}", path.display()))?;
+                let size_mb = metadata.len() as f64 / 1024.0 / 1024.0;
+                let hardware = crate::governor::Hardware::probe();
+                let vram = hardware.vram_total_mb.unwrap_or(0);
+                let ram = hardware.ram_available_mb;
+                let placement = if vram >= metadata.len() / 1024 / 1024 {
+                    "likely fits in VRAM"
+                } else if ram >= metadata.len() / 1024 / 1024 {
+                    "VRAM too small; CPU/RAM offload needed"
+                } else {
+                    "may not fit in available VRAM or RAM"
+                };
+                Ok(format!(
+                    "model: {}\nsize: {:.1} MiB\nVRAM: {} MiB\nRAM available: {} MiB\nplacement: {}",
+                    path.display(), size_mb, vram, ram, placement
+                ))
             }
             "man_page" => {
                 if !self.policy.allows_shell() {

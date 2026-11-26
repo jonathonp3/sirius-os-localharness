@@ -100,6 +100,33 @@ impl Client {
         })
     }
 
+    pub async fn count_tokens(&self, messages: &[Message], tools: &[Value]) -> Result<usize> {
+        let root = self.endpoint.trim_end_matches('/').trim_end_matches("/v1");
+        let url = format!("{root}/tokenize");
+        let content = serde_json::to_string(&json!({ "messages": messages, "tools": tools }))
+            .context("serializing prompt for tokenize")?;
+        let response = self
+            .http
+            .post(&url)
+            .json(&json!({ "content": content }))
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            bail!("tokenize returned {status}: {}", truncate(&text, 500));
+        }
+        let value: Value = response.json().await.context("parsing tokenize response")?;
+        if let Some(tokens) = value.get("tokens").and_then(Value::as_array) {
+            return Ok(tokens.len());
+        }
+        if let Some(count) = value.get("count").and_then(Value::as_u64) {
+            return Ok(count as usize);
+        }
+        bail!("tokenize response had no token count");
+    }
+
     pub async fn complete(
         &self,
         messages: &[Message],
