@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
 use crate::mcp::McpServer;
@@ -129,6 +130,8 @@ impl ToolSet {
             names.push("man_page".to_string());
             names.push("model_check".to_string());
             names.push("model_status".to_string());
+            names.push("model_load".to_string());
+            names.push("model_unload".to_string());
             for plugin in self.plugins.iter() {
                 names.push(plugin_tool_name(&plugin.name));
             }
@@ -332,6 +335,22 @@ impl ToolSet {
             definitions.push(json!({
                 "type": "function",
                 "function": {
+                    "name": "model_load",
+                    "description": "Start the configured llama-server systemd user service and wait for health. This loads the model configured in the service.",
+                    "parameters": { "type": "object", "properties": {} }
+                }
+            }));
+            definitions.push(json!({
+                "type": "function",
+                "function": {
+                    "name": "model_unload",
+                    "description": "Stop the configured llama-server systemd user service, unloading its model. This interrupts inference.",
+                    "parameters": { "type": "object", "properties": {} }
+                }
+            }));
+            definitions.push(json!({
+                "type": "function",
+                "function": {
                     "name": "model_status",
                     "description": "Report the currently served llama-server models and context window.",
                     "parameters": { "type": "object", "properties": {} }
@@ -471,6 +490,21 @@ impl ToolSet {
                 for root in roots {
                     let path = root.join(&name).join("SKILL.md");
                     if let Ok(text) = tokio::fs::read_to_string(&path).await {
+                        let manifest = root.join("manifest.json");
+                        if let Ok(raw) = tokio::fs::read_to_string(&manifest).await {
+                            if let Ok(value) = serde_json::from_str::<Value>(&raw) {
+                                if let Some(expected) = value
+                                    .get("skills")
+                                    .and_then(|skills| skills.get(&name))
+                                    .and_then(Value::as_str)
+                                {
+                                    let actual = sha256_hex(text.as_bytes());
+                                    if actual != expected {
+                                        bail!("skill manifest mismatch for `{name}`");
+                                    }
+                                }
+                            }
+                        }
                         return Ok(text);
                     }
                 }
@@ -677,6 +711,22 @@ impl ToolSet {
                 }
                 entries.sort();
                 Ok(truncate(&entries.join("\n")))
+            }
+            "model_unload" => {
+                let out = run_bash("systemctl --user stop llama-server", true, &self.root).await?;
+                Ok(format!("unloaded: {}", String::from_utf8_lossy(&out.stdout).trim()))
+            }
+            "model_load" => {
+                run_bash("systemctl --user start llama-server", true, &self.root).await?;
+                for _ in 0..60 {
+                    if let Ok(response) = reqwest::get("http://127.0.0.1:8080/health").await {
+                        if response.status().is_success() {
+                            return Ok("loaded: llama-server healthy".to_string());
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+                bail!("llama-server did not become healthy after 120s");
             }
             "model_status" => {
                 let endpoint = std::env::var("HARNESS_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
@@ -1043,6 +1093,11 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn first_command_word(command: &str) -> Option<String> {
     let first = command.split_whitespace().next()?;
     if first.is_empty() || first.contains([';', '|', '&', '<', '>', '(', ')', '$', '`', '=', '{', '}']) {
@@ -1134,6 +1189,9 @@ fn truncate(text: &str) -> String {
 
 /// Conservative destructive-command detection for the bash tool.
 pub fn destructive_reason(name: &str, arguments: &str) -> Option<String> {
+    if name == "model_unload" || name == "model_load" {
+        return Some(format!("model lifecycle: {name} changes the serving state"));
+    }
     if name != "bash" && name != "host_bash" {
         return None;
     }

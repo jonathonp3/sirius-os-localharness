@@ -91,6 +91,7 @@ pub async fn run(
         .route("/api/model-catalog/status", get(model_catalog_status))
         .route("/api/model-catalog/cancel", post(model_catalog_cancel))
         .route("/api/mcp/status", get(mcp_status))
+        .route("/api/skills", get(list_skills))
         .route("/api/sessions", get(list_sessions))
         .route("/api/sessions/export", get(export_sessions))
         .route("/api/sessions/{id}/export", get(export_session))
@@ -453,6 +454,21 @@ async fn model_catalog_cancel(
         return unauthorized();
     }
     catalog_response(modelctl(&["download-cancel"]).await)
+}
+
+async fn list_skills(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let skills = agent::load_skills(&state.config.workspace)
+        .into_iter()
+        .map(|(name, description)| json!({ "name": name, "description": description }))
+        .collect::<Vec<_>>();
+    Json(json!({ "skills": skills })).into_response()
 }
 
 async fn list_workspaces(

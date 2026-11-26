@@ -500,7 +500,7 @@ async fn execute_tool(tools: &ToolSet, name: &str, arguments: &str) -> String {
     }
 }
 
-fn load_skills(workspace: &std::path::Path) -> Vec<(String, String)> {
+pub(crate) fn load_skills(workspace: &std::path::Path) -> Vec<(String, String)> {
     let mut skills = Vec::new();
     let mut roots = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
@@ -615,6 +615,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
            7. Only after steps 1-6, summarize; do not summarize the first lines of journalctl.\n\
          - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
          - For journal/log/error tasks, load the `journal-check` skill with the skill tool before acting.\n\
+         - If the user writes `@skill-name`, load that skill with the skill tool first.\n\
          - Before relying on unfamiliar commands or flags, inspect the local environment documentation with man_page. Fedora changes between releases; do not assume flags from memory.\n\
          - Use the persistent system profile's OS version as context, but prefer local man pages and --help for exact options.\n\
          - Oversized-log/context procedure (mandatory):\n\

@@ -184,6 +184,11 @@ body.sidebar-open { padding-left:350px; }
 header select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px; }
 form { border-top:1px solid var(--border); padding:0; display:flex; flex-direction:column; gap:0; background:var(--bg); box-sizing:border-box; flex-shrink:0; position:relative; z-index:0; }
 #prompt-bar { padding:0 12px; background:var(--bg); flex:0 0 auto; position:relative; z-index:1; }
+#skill-menu { position:absolute; bottom:100%; left:12px; margin-bottom:6px; width:min(420px, calc(100vw - 40px)); max-height:260px; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:4px; box-shadow:0 8px 24px #0008; z-index:10; }
+.skill-option { display:block; width:100%; text-align:left; background:none; color:var(--text); border:0; border-radius:5px; padding:7px 9px; font:inherit; cursor:pointer; }
+.skill-option:hover, .skill-option.active { background:var(--bg); }
+.skill-option strong { display:block; font-size:14px; }
+.skill-option span { display:block; color:var(--muted); font-size:12px; }
 #button-bar { position:relative; z-index:2; display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:0 12px; height:49px; flex:0 0 49px; background:var(--panel); border-top:1px solid var(--border); box-sizing:border-box; }
 #editor { position:relative; flex:1; display:flex; font-size:16px; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
 #editor:focus-within { border-color:var(--accent); }
@@ -334,6 +339,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <main id="log"></main>
 <form id="form">
 <div id="prompt-bar">
+<div id="skill-menu" hidden></div>
 <div id="editor"><div id="spell-layer" aria-hidden="true"></div>
 <textarea id="prompt" spellcheck="false" lang="en-AU" autocorrect="on" autocapitalize="sentences" placeholder="Ask the local model… (Enter to send, Shift+Enter for a newline)" autofocus></textarea></div>
 </div>
@@ -403,6 +409,7 @@ let selectMode = false;
 let selectedSessions = new Set();
 const form = document.getElementById('form');
 const promptEl = document.getElementById('prompt');
+const skillMenu = document.getElementById('skill-menu');
 const sendEl = document.getElementById('send');
 const stopEl = document.getElementById('stop');
 const themeEl = document.getElementById('theme');
@@ -1495,6 +1502,7 @@ document.addEventListener('keydown', (event) => {
 setSidebar(false);
 refreshWorkspaces();
 refreshSessions();
+refreshSkills();
 showLanding();
 
 if (!token) setStatus('missing token in URL', true);
@@ -2270,6 +2278,63 @@ function handleBlock(block) {
   log.scrollTop = log.scrollHeight;
 }
 
+let skillCatalog = [];
+
+async function refreshSkills() {
+  if (!token) return;
+  try {
+    const response = await fetch('/api/skills?token=' + encodeURIComponent(token));
+    if (!response.ok) return;
+    const data = await response.json();
+    skillCatalog = data.skills || [];
+  } catch (error) {
+    skillCatalog = [];
+  }
+}
+
+function hideSkillMenu() {
+  skillMenu.hidden = true;
+  skillMenu.innerHTML = '';
+}
+
+function updateSkillMenu() {
+  const before = promptEl.value.slice(0, promptEl.selectionStart);
+  const match = before.match(/@([A-Za-z0-9_-]*)$/);
+  if (!match) {
+    hideSkillMenu();
+    return;
+  }
+  const query = match[1].toLowerCase();
+  const matches = skillCatalog.filter((skill) => {
+    return !query || skill.name.toLowerCase().includes(query)
+      || (skill.description || '').toLowerCase().includes(query);
+  }).slice(0, 8);
+  if (!matches.length) {
+    hideSkillMenu();
+    return;
+  }
+  skillMenu.innerHTML = '';
+  for (const skill of matches) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'skill-option';
+    const name = document.createElement('strong');
+    name.textContent = '@' + skill.name;
+    const description = document.createElement('span');
+    description.textContent = skill.description || '';
+    option.append(name, description);
+    option.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      const start = promptEl.selectionStart - match[0].length;
+      promptEl.setRangeText('@' + skill.name + ' ', start, promptEl.selectionStart, 'end');
+      hideSkillMenu();
+      promptEl.focus();
+    });
+    skillMenu.appendChild(option);
+  }
+  skillMenu.hidden = false;
+}
+
 async function send() {
   const text = promptEl.value;
   if (!text.trim() || !token) return;
@@ -2354,7 +2419,9 @@ form.addEventListener('submit', (event) => {
   send();
 });
 stopEl.addEventListener('click', () => { if (controller) controller.abort(); });
+promptEl.addEventListener('input', updateSkillMenu);
 promptEl.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') { hideSkillMenu(); return; }
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
     if (controller && event.ctrlKey) {
