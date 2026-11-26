@@ -298,62 +298,6 @@ impl ToolSet {
             definitions.push(json!({
                 "type": "function",
                 "function": {
-                    "name": "log_check",
-                    "description": "Check a systemd user unit's current state, recent log lines, and warning/error entries. Use this for questions about logs or errors instead of reading the beginning of a huge journal.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "unit": { "type": "string", "description": "Systemd user unit, e.g. llama-server" },
-                            "since": { "type": "string", "description": "journalctl --since value (default: 24 hours ago)" },
-                            "lines": { "type": "integer", "description": "Recent lines to show (default 120, max 500)" },
-                            "details": { "type": "boolean", "description": "Include recent logs and raw error sections (default false; REPORT only)" }
-                        },
-                        "required": ["unit"]
-                    }
-                }
-            }));
-            definitions.push(json!({
-                "type": "function",
-                "function": {
-                    "name": "man_page",
-                    "description": "Read a command's local man page or --help output. Use before relying on unfamiliar commands or flags, especially on a new Fedora release.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "command": { "type": "string", "description": "Command name, e.g. journalctl or systemctl" },
-                            "section": { "type": "string", "description": "Optional man section, e.g. 1 or 5" }
-                        },
-                        "required": ["command"]
-                    }
-                }
-            }));
-            definitions.push(json!({
-                "type": "function",
-                "function": {
-                    "name": "model_load",
-                    "description": "Start the configured llama-server systemd user service and wait for health. This loads the model configured in the service.",
-                    "parameters": { "type": "object", "properties": {} }
-                }
-            }));
-            definitions.push(json!({
-                "type": "function",
-                "function": {
-                    "name": "model_unload",
-                    "description": "Stop the configured llama-server systemd user service, unloading its model. This interrupts inference.",
-                    "parameters": { "type": "object", "properties": {} }
-                }
-            }));
-            definitions.push(json!({
-                "type": "function",
-                "function": {
-                    "name": "model_status",
-                    "description": "Report the currently served llama-server models and context window.",
-                    "parameters": { "type": "object", "properties": {} }
-                }
-            }));
-            definitions.push(json!({
-                "type": "function",
-                "function": {
                     "name": "model_check",
                     "description": "Check a GGUF model file's size against available VRAM and RAM. Use before choosing or serving a local model.",
                     "parameters": {
@@ -397,13 +341,6 @@ impl ToolSet {
             }
         }
         definitions.retain(|definition| {
-            let core_hidden = matches!(
-                definition.get("function").and_then(|function| function.get("name")).and_then(Value::as_str),
-                Some("log_check" | "man_page" | "model_status" | "model_load" | "model_unload")
-            );
-            if core_hidden {
-                return false;
-            }
             definition
                 .get("function")
                 .and_then(|function| function.get("name"))
@@ -515,7 +452,7 @@ impl ToolSet {
                     }
                 }
                 if name == "journal-check" {
-                    return Ok("Journal-check skill is embedded; use log_check with a recent since window, read VERDICT and APPLICATION ERROR MARKERS, and use the REPORT block verbatim.".to_string());
+                    return Ok("Journal-check skill is embedded; use plugin__log_check with a recent since window, read VERDICT and APPLICATION ERROR MARKERS, and use the REPORT block verbatim.".to_string());
                 }
                 bail!("unknown skill `{name}`");
             }
@@ -718,29 +655,6 @@ impl ToolSet {
                 entries.sort();
                 Ok(truncate(&entries.join("\n")))
             }
-            "model_unload" => {
-                let out = run_bash("systemctl --user stop llama-server", true, &self.root).await?;
-                Ok(format!("unloaded: {}", String::from_utf8_lossy(&out.stdout).trim()))
-            }
-            "model_load" => {
-                run_bash("systemctl --user start llama-server", true, &self.root).await?;
-                for _ in 0..60 {
-                    if let Ok(response) = reqwest::get("http://127.0.0.1:8080/health").await {
-                        if response.status().is_success() {
-                            return Ok("loaded: llama-server healthy".to_string());
-                        }
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                }
-                bail!("llama-server did not become healthy after 120s");
-            }
-            "model_status" => {
-                let endpoint = std::env::var("HARNESS_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
-                let root = endpoint.trim_end_matches('/').trim_end_matches("/v1");
-                let models = reqwest::get(format!("{root}/v1/models")).await?.text().await?;
-                let props = reqwest::get(format!("{root}/props")).await?.text().await?;
-                Ok(format!("models: {}\nprops: {}", models, props))
-            }
             "model_check" => {
                 let path = PathBuf::from(string_arg(&arguments, "path")?);
                 let metadata = tokio::fs::metadata(&path)
@@ -762,205 +676,6 @@ impl ToolSet {
                     path.display(), size_mb, vram, ram, placement
                 ))
             }
-            "man_page" => {
-                if !self.policy.allows_shell() {
-                    bail!("man_page is disabled by the tool policy (use --tool-policy full)");
-                }
-                let verb = string_arg(&arguments, "command")?;
-                if !verb.chars().all(|c| c.is_ascii_alphanumeric() || "-_.+".contains(c)) {
-                    bail!("invalid command name");
-                }
-                if !command_available(&verb, true).await? {
-                    bail!("command `{verb}` is not available on the host");
-                }
-                let section = arguments
-                    .get("section")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                if !section.chars().all(|c| c.is_ascii_digit()) {
-                    bail!("invalid man section");
-                }
-                let target = if section.is_empty() {
-                    verb.clone()
-                } else {
-                    format!("{} {}", section, verb)
-                };
-                let man = run_bash(&format!("man -P cat {}", target), true, &self.root).await?;
-                let man_text = String::from_utf8_lossy(&man.stdout).to_string();
-                if man.status.success() && !man_text.trim().is_empty() {
-                    return Ok(truncate(&format!("SOURCE: man {}\n\n{}", target, man_text.trim())));
-                }
-                let help = run_bash(&format!("{} --help", verb), true, &self.root).await?;
-                let help_text = String::from_utf8_lossy(&help.stdout).to_string();
-                if help_text.trim().is_empty() {
-                    bail!("no man page and no --help output for `{verb}`");
-                }
-                Ok(truncate(&format!("SOURCE: {} --help\n\n{}", verb, help_text.trim())))
-            }
-            "log_check" => {
-                if !self.policy.allows_shell() {
-                    bail!("log_check is disabled by the tool policy (use --tool-policy full)");
-                }
-                let unit = string_arg(&arguments, "unit")?;
-                if !unit.chars().all(|c| c.is_ascii_alphanumeric() || "-_.@:".contains(c)) {
-                    bail!("invalid unit name");
-                }
-                let since = arguments
-                    .get("since")
-                    .and_then(Value::as_str)
-                    .unwrap_or("24 hours ago")
-                    .to_string();
-                if !since.chars().all(|c| c.is_ascii_alphanumeric() || " :_-+".contains(c)) {
-                    bail!("invalid since value");
-                }
-                let lines = arguments
-                    .get("lines")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(120)
-                    .clamp(10, 500);
-                let unit_arg = format!("'{}'", unit);
-                let since_arg = format!("'{}'", since);
-                let recent = run_bash(
-                    &format!("journalctl --user -u {unit_arg} --since {since_arg} -n {lines} --no-pager"),
-                    true,
-                    &self.root,
-                ).await?;
-                let warnings = run_bash(
-                    &format!("journalctl --user -u {unit_arg} --since {since_arg} -p warning -n 200 --no-pager"),
-                    true,
-                    &self.root,
-                ).await?;
-                let status = run_bash(
-                    &format!("systemctl --user show {unit_arg} -p ActiveState -p NRestarts -p ActiveEnterTimestamp --no-pager"),
-                    true,
-                    &self.root,
-                ).await?;
-                let recent_text = String::from_utf8_lossy(&recent.stdout).to_string();
-                let is_application_warning = |line: &str| {
-                    let lower = line.to_ascii_lowercase();
-                    line.contains(" W ") || line.contains(" W  ") || lower.contains("warning")
-                };
-                let app_errors: Vec<&str> = recent_text
-                    .lines()
-                    .filter(|line| {
-                        let lower = line.to_ascii_lowercase();
-                        !is_application_warning(line)
-                            && (line.contains(" E ") || line.contains(" E  ")
-                                || lower.contains("error")
-                                || lower.contains("failed")
-                                || lower.contains("exceed")
-                                || lower.contains("panic"))
-                    })
-                    .take(30)
-                    .collect();
-                let app_warnings: Vec<&str> = recent_text
-                    .lines()
-                    .filter(|line| is_application_warning(line))
-                    .take(30)
-                    .collect();
-                let status_text = String::from_utf8_lossy(&status.stdout).trim().to_string();
-                let warnings_text = String::from_utf8_lossy(&warnings.stdout).trim().to_string();
-                let app_errors_text = if app_errors.is_empty() {
-                    "-- no application error markers --".to_string()
-                } else {
-                    app_errors.join("\n")
-                };
-                let app_warnings_text = if app_warnings.is_empty() {
-                    "-- no application warning markers --".to_string()
-                } else {
-                    app_warnings.join("\n")
-                };
-                let active = status_text.lines().any(|line| line.trim() == "ActiveState=active");
-                let restarts = status_text
-                    .lines()
-                    .find_map(|line| line.strip_prefix("NRestarts="))
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .unwrap_or(0);
-                let has_warnings = !warnings_text.contains("-- No entries --") && !warnings_text.is_empty();
-                let verdict = if !active {
-                    "FAILED"
-                } else if restarts > 0 || !app_errors.is_empty() || !app_warnings.is_empty() || has_warnings {
-                    "DEGRADED"
-                } else {
-                    "OK"
-                };
-                let report = match verdict {
-                    "FAILED" => format!(
-                        "The systemd user unit `{unit}` is not active. Verdict: FAILED. NRestarts={restarts}."
-                    ),
-                    "DEGRADED" => {
-                        let mut text = format!(
-                            "The systemd user unit `{unit}` is active, with NRestarts={restarts}. Verdict: DEGRADED."
-                        );
-                        if !app_errors.is_empty() {
-                            text.push_str(&format!(" {} application error marker(s) were found.", app_errors.len()));
-                            text.push_str("\nRecent application errors:\n");
-                            for line in app_errors.iter().take(3) {
-                                let original = line.trim();
-                                let mut short: String = original.chars().take(240).collect();
-                                if original.chars().count() > 240 {
-                                    short.push('…');
-                                }
-                                text.push_str("- ");
-                                text.push_str(&short);
-                                text.push('\n');
-                            }
-                        }
-                        if !app_warnings.is_empty() {
-                            text.push_str(&format!(" {} application warning marker(s) were found.", app_warnings.len()));
-                            text.push_str("\nRecent application warnings:\n");
-                            for line in app_warnings.iter().take(3) {
-                                let original = line.trim();
-                                let mut short: String = original.chars().take(240).collect();
-                                if original.chars().count() > 240 {
-                                    short.push('…');
-                                }
-                                text.push_str("- ");
-                                text.push_str(&short);
-                                text.push('\n');
-                            }
-                        }
-                        if has_warnings && app_errors.is_empty() && app_warnings.is_empty() {
-                            text.push_str(" Journal warnings were found in the selected window.");
-                        }
-                        let context_error = app_errors.iter().any(|line| {
-                            let lower = line.to_ascii_lowercase();
-                            lower.contains("exceed") || lower.contains("context size")
-                        });
-                        if context_error {
-                            text.push_str("Do not restart for request/context-size errors; reduce the request or start a fresh chat.");
-                        } else {
-                            text.push_str("Inspect details if these warnings recur; do not restart unless the unit itself is failing.");
-                        }
-                        text
-                    }
-                    _ => format!(
-                        "The systemd user unit `{unit}` is active, with NRestarts={restarts}. Verdict: OK. No application error markers or journal warnings were found in the selected window ({since})."
-                    ),
-                };
-                let details = arguments.get("details").and_then(Value::as_bool).unwrap_or(false);
-                if !details {
-                    return Ok(truncate(&format!("REPORT\n{report}\n")));
-                }
-                Ok(truncate(&format!(
-                    "REPORT\n{}\n\nVERDICT\n{}\nActive: {}\nNRestarts: {}\nApplication error markers: {}\nApplication warning markers: {}\nJournal warnings/errors: {}\n\nSERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (journal priority warning and above)\n{}\n\nAPPLICATION ERROR MARKERS (from recent output)\n{}\n\nAPPLICATION WARNING MARKERS (from recent output)\n{}",
-                    report,
-                    verdict,
-                    active,
-                    restarts,
-                    app_errors.len(),
-                    app_warnings.len(),
-                    has_warnings,
-                    status_text,
-                    lines,
-                    since,
-                    recent_text.trim(),
-                    warnings_text,
-                    app_errors_text,
-                    app_warnings_text,
-                )))
-            }
             "bash" | "host_bash" => {
                 if !self.policy.allows_shell() {
                     bail!("bash is disabled by the tool policy (use --allow-shell or --tool-policy full)");
@@ -981,7 +696,7 @@ impl ToolSet {
                     && !command.contains("-n ")
                     && !command.contains("--lines")
                 {
-                    bail!("bare journalctl queries can return huge history. Use log_check with the unit and a since window; if raw output is required, add --since and -n.");
+                    bail!("bare journalctl queries can return huge history. Use plugin__log_check with the unit and a since window; if raw output is required, add --since and -n.");
                 }
                 if let Some(word) = first_command_word(&command) {
                     if !command_available(&word, host).await? {
