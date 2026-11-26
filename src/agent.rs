@@ -16,7 +16,7 @@ use crate::llm::{Client, Message, Usage};
 use crate::session::Session;
 use crate::tools::{ToolPolicy, ToolScopes, ToolSet};
 
-const JOURNAL_SKILL: &str = include_str!("skills/journal-check.md");
+const JOURNAL_SKILL: &str = include_str!("skills/journal-check/SKILL.md");
 
 /// Receives streaming progress. CLI prints it; the server forwards it as SSE.
 pub trait EventSink: Send {
@@ -69,6 +69,7 @@ pub async fn run(
     let client = Client::new(&config.endpoint, &config.model)?;
     let mut tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run, config.web);
     tools.set_session_path(session.path().to_path_buf());
+    tools.set_history_dir(config.data_dir.join("file-history"));
     let can_delegate = config.depth < config.max_depth;
     let mut definitions = tools.definitions();
     let mut names = tools.names();
@@ -77,8 +78,6 @@ pub async fn run(
         names.push("subagent".to_string());
     }
     let mut system = system_prompt(&config.workspace, &names, config.depth);
-    system.push_str("\n\nLocal skill `journal-check`:\n");
-    system.push_str(JOURNAL_SKILL);
     if config.dry_run {
         system.push_str(
             "\nDry-run mode is active: tool results beginning with `dry-run:` are previews. Nothing was executed; never claim those actions happened.\n",
@@ -501,6 +500,44 @@ async fn execute_tool(tools: &ToolSet, name: &str, arguments: &str) -> String {
     }
 }
 
+fn load_skills(workspace: &std::path::Path) -> Vec<(String, String, String)> {
+    let mut skills = Vec::new();
+    let mut roots = Vec::new();
+    if let Some(home) = std::env::var_os("HOME") {
+        roots.push(std::path::PathBuf::from(home).join(".config/local-harness/skills"));
+    }
+    roots.push(workspace.join(".localharness/skills"));
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(root) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path().join("SKILL.md");
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let mut name = String::new();
+            let mut description = String::new();
+            for line in text.lines().take(20) {
+                if let Some(value) = line.strip_prefix("name:") {
+                    name = value.trim().to_string();
+                } else if let Some(value) = line.strip_prefix("description:") {
+                    description = value.trim().to_string();
+                } else if line.trim() == "---" && !name.is_empty() {
+                    break;
+                }
+            }
+            if !name.is_empty() {
+                skills.push((name, description, text.clone()));
+            }
+        }
+    }
+    if skills.is_empty() {
+        skills.push((
+            "journal-check".to_string(),
+            "Inspect systemd unit state, recent logs, and application errors safely.".to_string(),
+            JOURNAL_SKILL.to_string(),
+        ));
+    }
+    skills
+}
+
 fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) -> String {
     let role = if depth == 0 {
         "You are a local coding agent running inside the workspace"
@@ -537,9 +574,23 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
             .collect::<Vec<_>>()
             .join("\n")
     };
+    let skills = load_skills(workspace);
+    let skill_summary = skills
+        .iter()
+        .map(|(name, description, _)| format!("- {name}: {description}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let skill_procedures = skills
+        .iter()
+        .map(|(name, _, text)| format!("### Skill: {name}\n{text}"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
     format!(
         "{role} `{}`.\n\
          Tools available: {}.\n\
+         Skills (load a procedure when its description matches; user may invoke @skill):\n{skill_summary}\n\
+         Full skill procedures:\n{skill_procedures}\n\
+
          MCP tools are connected and are expected capabilities, not optional extras:\n{mcp_summary}\n\
          - Use the matching MCP tool when the task fits; do not claim an MCP capability is unavailable without checking.\n\
          - For PhotoCraft, use run_spec for JSON design specs, document_open only for images/PSD, and document_export for outputs.\n\
