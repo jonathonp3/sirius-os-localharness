@@ -30,6 +30,9 @@ jobs:
     - name: Build the harness binary
       run: cargo build --release --locked
 
+    - name: Run regression tests
+      run: cargo test --release --locked
+
     - name: Stage the Flatpak binary
       run: cp target/release/harness packaging/flatpak/harness
 

@@ -188,6 +188,10 @@ enum PluginAction {
     List,
     /// Install a plugin package directory into the local registry.
     Install { path: PathBuf },
+    /// Install a new version, preserving the current one for rollback.
+    Update { path: PathBuf },
+    /// Restore the previous version of a plugin.
+    Rollback { name: String },
     /// Enable an installed plugin.
     Enable { name: String },
     /// Disable an installed plugin without removing it.
@@ -471,6 +475,16 @@ async fn main() -> Result<()> {
                 PluginAction::Install { path } => {
                     let entry = plugins::install(&path)?;
                     println!("installed {} {} r{}", entry.name, entry.version, entry.revision);
+                }
+                PluginAction::Update { path } => {
+                    let entry = plugins::install(&path)?;
+                    println!("updated {} {} r{} (previous preserved)", entry.name, entry.version, entry.revision);
+                }
+                PluginAction::Rollback { name } => {
+                    if !plugins::rollback(&name)? {
+                        bail!("unknown plugin `{name}` or no previous version");
+                    }
+                    println!("rolled back {name}");
                 }
                 PluginAction::Enable { name } => {
                     if !plugins::set_enabled(&name, true)? {

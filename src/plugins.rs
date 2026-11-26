@@ -328,6 +328,8 @@ pub struct Installed {
     pub path: String,
     #[serde(default)]
     pub tools: Vec<String>,
+    #[serde(default)]
+    pub previous: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -378,6 +380,7 @@ pub fn bootstrap_bundled() -> Result<()> {
         enabled: true,
         path: "linux-ops".to_string(),
         tools: loaded.iter().map(|plugin| plugin.name.clone()).collect(),
+        previous: None,
     });
     save_registry(&registry)?;
     Ok(())
@@ -485,11 +488,23 @@ fn install_from_dir(source: &Path) -> Result<Installed> {
     };
     let package_name = first.package.clone();
     let destination = registry_dir().join(&package_name);
+    let mut registry = load_registry()?;
+    let previous = registry
+        .plugins
+        .iter()
+        .find(|entry| entry.name == package_name)
+        .map(|entry| entry.version.clone());
     if destination.exists() {
+        if let Some(old_version) = previous.as_deref() {
+            let backup = registry_dir().join("versions").join(&package_name).join(old_version);
+            if backup.exists() {
+                std::fs::remove_dir_all(&backup)?;
+            }
+            copy_dir(&destination, &backup)?;
+        }
         std::fs::remove_dir_all(&destination)?;
     }
     copy_dir(source, &destination)?;
-    let mut registry = load_registry()?;
     registry.plugins.retain(|entry| entry.name != package_name);
     let entry = Installed {
         name: package_name.clone(),
@@ -500,10 +515,55 @@ fn install_from_dir(source: &Path) -> Result<Installed> {
         enabled: true,
         path: package_name,
         tools: loaded.iter().map(|plugin| plugin.name.clone()).collect(),
+        previous,
     };
     registry.plugins.push(entry.clone());
     save_registry(&registry)?;
     Ok(entry)
+}
+
+pub fn rollback(name: &str) -> Result<bool> {
+    let mut registry = load_registry()?;
+    let Some(index) = registry.plugins.iter().position(|entry| entry.name == name) else {
+        return Ok(false);
+    };
+    let entry = registry.plugins[index].clone();
+    let Some(previous) = entry.previous.clone() else {
+        bail!("plugin `{name}` has no previous version");
+    };
+    let current = registry_dir().join(&entry.path);
+    let backup = registry_dir().join("versions").join(name).join(&previous);
+    if !backup.is_dir() {
+        bail!("previous version `{previous}` for `{name}` is missing");
+    }
+    let current_version = entry.version.clone();
+    if current.exists() {
+        let save = registry_dir().join("versions").join(name).join(&current_version);
+        if save.exists() {
+            std::fs::remove_dir_all(&save)?;
+        }
+        copy_dir(&current, &save)?;
+        std::fs::remove_dir_all(&current)?;
+    }
+    copy_dir(&backup, &current)?;
+    let loaded = load(&current)?;
+    let Some(first) = loaded.first() else {
+        bail!("rolled-back package is empty");
+    };
+    let updated = Installed {
+        name: name.to_string(),
+        version: first.version.clone(),
+        revision: first.revision,
+        api: first.api.clone(),
+        min_harness: first.min_harness.clone(),
+        enabled: entry.enabled,
+        path: entry.path,
+        tools: loaded.iter().map(|plugin| plugin.name.clone()).collect(),
+        previous: Some(current_version),
+    };
+    registry.plugins[index] = updated;
+    save_registry(&registry)?;
+    Ok(true)
 }
 
 pub fn set_enabled(name: &str, enabled: bool) -> Result<bool> {
@@ -527,6 +587,38 @@ pub fn remove(name: &str) -> Result<bool> {
     if destination.exists() {
         std::fs::remove_dir_all(destination)?;
     }
+    let versions = registry_dir().join("versions").join(name);
+    if versions.exists() {
+        std::fs::remove_dir_all(versions)?;
+    }
     save_registry(&registry)?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compares_versions() {
+        assert!(version_tuple("1.2.3") > version_tuple("1.2.2"));
+        assert!(version_tuple("2.0.0") > version_tuple("1.9.9"));
+        assert_eq!(version_tuple("1.2"), version_tuple("1.2.0"));
+    }
+
+    #[test]
+    fn hashes_are_stable() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn default_permissions_are_restrictive() {
+        let permissions = Permissions::default();
+        assert!(!permissions.network);
+        assert!(!permissions.host);
+        assert_eq!(permissions.write, "workspace");
+    }
 }

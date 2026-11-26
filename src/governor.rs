@@ -264,3 +264,25 @@ fn truncate_chars(text: &str, limit: usize) -> String {
     out.push_str("\n...[trimmed to fit the local context budget]");
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncates_oversized_tool_results() {
+        let mut messages = vec![
+            Message::system("system"),
+            Message::user("user"),
+            Message::tool("t1".to_string(), "x".repeat(20_000)),
+        ];
+        let governor = Governor::new(
+            ModelInfo { model: "test".to_string(), n_ctx: 4096, slots: 1 },
+            4096,
+            256,
+        );
+        let report = governor.fit(&mut messages, &[]);
+        assert!(report.truncated_tools >= 1);
+        assert!(messages[2].content.as_ref().unwrap().chars().count() < 20_000);
+    }
+}
