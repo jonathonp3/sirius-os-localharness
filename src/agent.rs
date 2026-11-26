@@ -134,6 +134,7 @@ pub async fn run(
     }
 
     let mut final_usage: Option<Usage> = None;
+    let mut log_degraded = false;
     let mut children = 0usize;
     let mut dry_run_reminded = false;
 
@@ -236,7 +237,8 @@ pub async fn run(
                 if turn.finish_reason.as_deref() == Some("length") {
                     sink.notice("output truncated at max_tokens");
                 }
-                return Ok(Outcome { content: turn.content, usage: final_usage });
+                let content = if log_degraded { degraded_wording(&turn.content) } else { turn.content };
+                return Ok(Outcome { content, usage: final_usage });
             }
 
             for call in &turn.tool_calls {
@@ -268,6 +270,11 @@ pub async fn run(
                     execute_tool(&tools, &call.function.name, &call.function.arguments).await
                 };
                 sink.tool_result(&result);
+                if call.function.name == "log_check"
+                    && (result.contains("Verdict: DEGRADED") || result.contains("VERDICT\nDEGRADED"))
+                {
+                    log_degraded = true;
+                }
                 let message = Message::tool(call.id.clone(), result);
                 messages.push(message.clone());
                 session
@@ -315,6 +322,23 @@ fn stage_tool_results(messages: &mut [Message]) {
             ));
         }
     }
+}
+
+fn degraded_wording(text: &str) -> String {
+    let mut out = text.to_string();
+    for (from, to) in [
+        ("functioning normally", "running with warnings"),
+        ("Functioning normally", "Running with warnings"),
+        ("functioning", "running with warnings"),
+        ("Functioning", "Running with warnings"),
+        ("normal operation", "operation with warnings"),
+        ("Normal operation", "Operation with warnings"),
+        ("fully healthy", "running with warnings"),
+        ("healthy", "running with warnings"),
+    ] {
+        out = out.replace(from, to);
+    }
+    out
 }
 
 /// Summarize all turns before the latest user message, then replace them with
