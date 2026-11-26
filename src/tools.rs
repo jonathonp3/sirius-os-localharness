@@ -126,7 +126,6 @@ impl ToolSet {
         if self.policy.allows_shell() {
             names.push("bash".to_string());
             names.push("host_bash".to_string());
-            names.push("model_check".to_string());
             for plugin in self.plugins.iter() {
                 names.push(plugin_tool_name(&plugin.name));
             }
@@ -292,20 +291,6 @@ impl ToolSet {
                         "type": "object",
                         "properties": { "command": { "type": "string", "description": "Command to run with host bash -lc" } },
                         "required": ["command"]
-                    }
-                }
-            }));
-            definitions.push(json!({
-                "type": "function",
-                "function": {
-                    "name": "model_check",
-                    "description": "Check a GGUF model file's size against available VRAM and RAM. Use before choosing or serving a local model.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "path": { "type": "string", "description": "Absolute path to the GGUF file" }
-                        },
-                        "required": ["path"]
                     }
                 }
             }));
@@ -654,27 +639,6 @@ impl ToolSet {
                 }
                 entries.sort();
                 Ok(truncate(&entries.join("\n")))
-            }
-            "model_check" => {
-                let path = PathBuf::from(string_arg(&arguments, "path")?);
-                let metadata = tokio::fs::metadata(&path)
-                    .await
-                    .with_context(|| format!("reading {}", path.display()))?;
-                let size_mb = metadata.len() as f64 / 1024.0 / 1024.0;
-                let hardware = crate::governor::Hardware::probe();
-                let vram = hardware.vram_total_mb.unwrap_or(0);
-                let ram = hardware.ram_available_mb;
-                let placement = if vram >= metadata.len() / 1024 / 1024 {
-                    "likely fits in VRAM"
-                } else if ram >= metadata.len() / 1024 / 1024 {
-                    "VRAM too small; CPU/RAM offload needed"
-                } else {
-                    "may not fit in available VRAM or RAM"
-                };
-                Ok(format!(
-                    "model: {}\nsize: {:.1} MiB\nVRAM: {} MiB\nRAM available: {} MiB\nplacement: {}",
-                    path.display(), size_mb, vram, ram, placement
-                ))
             }
             "bash" | "host_bash" => {
                 if !self.policy.allows_shell() {

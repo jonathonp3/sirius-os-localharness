@@ -397,7 +397,7 @@ def main() -> int:
     lines.extend([
         "",
         "Use this as cached context. Verify live state before destructive administration.",
-        "Refresh with: local-harness-system-profile",
+        "Refresh with: plugin__system_profile",
     ])
     MD_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(MD_PATH)

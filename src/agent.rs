@@ -579,7 +579,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
         .and_then(|path| std::fs::read_to_string(path).ok())
         .filter(|text| !text.trim().is_empty())
         .map(|text| truncate(&text, 3500))
-        .unwrap_or_else(|| "No system profile collected yet. Run local-harness-system-profile to collect one.".to_string());
+        .unwrap_or_else(|| "No system profile collected yet. Run plugin__system_profile to collect one.".to_string());
     let mut mcp_groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for tool in tools {
         if let Some(rest) = tool.strip_prefix("mcp__") {
@@ -652,7 +652,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - For current questions, run the live check before the final answer; do not quote the cached profile value as if it were live.\n\
          - The latest live tool result is authoritative for current state. It overrides earlier chat messages and compacted summaries, even if they said active, healthy, or normal. Do not reconcile toward the old answer.\n\
          - Historical summaries are background only; never repeat a current status from them without re-checking.\n\
-         - Verify cached profile values before destructive operations and refresh with local-harness-system-profile when needed.\n\
+         - Verify cached profile values before destructive operations and refresh with plugin__system_profile when needed.\n\
          {delegation}\
          - Answer directly; do not produce long deliberation.\n\
          Formatting:\n\

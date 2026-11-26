@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Linux operations for LocalHarness; runs host commands from the Flatpak."""
 import json, os, subprocess, sys, urllib.request
+from pathlib import Path
 
 def host(cmd, timeout=20):
     if os.environ.get("FLATPAK_ID"):
@@ -48,6 +49,36 @@ def man_page(command):
     result = host([command, "--help"], 20)
     print(f"SOURCE: {command} --help\n\n{result.stdout.strip() or result.stderr.strip()}")
 
+def model_check(path):
+    size = os.path.getsize(path)
+    size_mb = size / 1024 / 1024
+    vram_mb = 0
+    for card in Path("/sys/class/drm").glob("card*/device/mem_info_vram_total"):
+        try:
+            vram_mb = max(vram_mb, int(card.read_text().strip()) // (1024 * 1024))
+        except Exception:
+            pass
+    ram_available_mb = 0
+    try:
+        for line in open("/proc/meminfo"):
+            if line.startswith("MemAvailable:"):
+                ram_available_mb = int(line.split()[1]) // 1024
+                break
+    except Exception:
+        pass
+    if vram_mb >= size_mb:
+        placement = "likely fits in VRAM"
+    elif ram_available_mb >= size_mb:
+        placement = "VRAM too small; CPU/RAM offload needed"
+    else:
+        placement = "may not fit in available VRAM or RAM"
+    print(f"model: {path}\nsize: {size_mb:.1f} MiB\nVRAM: {vram_mb} MiB\nRAM available: {ram_available_mb} MiB\nplacement: {placement}")
+
+def system_profile():
+    script = Path(__file__).with_name("system_profile.py")
+    result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=60)
+    print(result.stdout.strip() or result.stderr.strip())
+
 def model_status():
     for path in ("/v1/models", "/props"):
         try:
@@ -64,7 +95,9 @@ if __name__ == "__main__":
     action = sys.argv[1]
     if action == "log-check": log_check(sys.argv[2])
     elif action == "man-page": man_page(sys.argv[2])
+    elif action == "model-check": model_check(sys.argv[2])
     elif action == "model-status": model_status()
+    elif action == "system-profile": system_profile()
     elif action == "model-load": service("start")
     elif action == "model-unload": service("stop")
     else: raise SystemExit(f"unknown action {action}")
