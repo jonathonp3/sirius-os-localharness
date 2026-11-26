@@ -567,7 +567,8 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
            3. Read APPLICATION ERROR MARKERS and WARNINGS/ERRORS.\n\
            4. Report every error/failed/exceeded/panic marker, even if the service is active.\n\
            5. If VERDICT is DEGRADED or FAILED, do not call the service normal.\n\
-           6. Only after steps 1-5, summarize; do not summarize the first lines of journalctl.\n\
+           6. Use the log_check REPORT block as the final status answer verbatim; do not add a new health narrative.\n\
+           7. Only after steps 1-6, summarize; do not summarize the first lines of journalctl.\n\
          - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
          - Before relying on unfamiliar commands or flags, inspect the local environment documentation with man_page. Fedora changes between releases; do not assume flags from memory.\n\
          - Use the persistent system profile's OS version as context, but prefer local man pages and --help for exact options.\n\

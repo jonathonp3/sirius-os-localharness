@@ -619,8 +619,40 @@ impl ToolSet {
                 } else {
                     "OK"
                 };
+                let report = match verdict {
+                    "FAILED" => format!(
+                        "The systemd user unit `{unit}` is not active. Verdict: FAILED. NRestarts={restarts}."
+                    ),
+                    "DEGRADED" => {
+                        let mut text = format!(
+                            "The systemd user unit `{unit}` is active, with NRestarts={restarts}. Verdict: DEGRADED."
+                        );
+                        if !app_errors.is_empty() {
+                            text.push_str(&format!(" {} application error marker(s) were found.", app_errors.len()));
+                            text.push_str("\nRecent application errors:\n");
+                            for line in app_errors.iter().take(3) {
+                                let original = line.trim();
+                                let mut short: String = original.chars().take(240).collect();
+                                if original.chars().count() > 240 {
+                                    short.push('…');
+                                }
+                                text.push_str("- ");
+                                text.push_str(&short);
+                                text.push('\n');
+                            }
+                            text.push_str("Do not restart for request/context-size errors; reduce the request or start a fresh chat.");
+                        } else if has_warnings {
+                            text.push_str(" Journal warnings or errors were found in the selected window.");
+                        }
+                        text
+                    }
+                    _ => format!(
+                        "The systemd user unit `{unit}` is active, with NRestarts={restarts}. Verdict: OK. No application error markers or journal warnings were found in the selected window ({since})."
+                    ),
+                };
                 Ok(truncate(&format!(
-                    "VERDICT\n{}\nActive: {}\nNRestarts: {}\nApplication error markers: {}\nJournal warnings/errors: {}\n\nSERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (journal priority warning and above)\n{}\n\nAPPLICATION ERROR MARKERS (from recent output)\n{}",
+                    "REPORT\n{}\n\nVERDICT\n{}\nActive: {}\nNRestarts: {}\nApplication error markers: {}\nJournal warnings/errors: {}\n\nSERVICE\n{}\n\nRECENT (last {} lines since {})\n{}\n\nWARNINGS/ERRORS (journal priority warning and above)\n{}\n\nAPPLICATION ERROR MARKERS (from recent output)\n{}",
+                    report,
                     verdict,
                     active,
                     restarts,
