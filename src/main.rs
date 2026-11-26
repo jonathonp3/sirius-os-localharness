@@ -264,6 +264,7 @@ async fn main() -> Result<()> {
             .and_then(tools::ToolPolicy::parse)
             .unwrap_or(tools::ToolPolicy::ReadOnly),
     };
+    plugins::bootstrap_bundled()?;
     let plugins_path = cli
         .plugins
         .clone()

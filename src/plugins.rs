@@ -70,6 +70,10 @@ fn default_api() -> String {
 
 const PLUGIN_API: &str = "1";
 
+const BUNDLED_LINUX_OPS_JSON: &[u8] = include_bytes!("../plugins/linux-ops/plugin.json");
+const BUNDLED_LINUX_OPS_PY: &[u8] = include_bytes!("../plugins/linux-ops/bin/linux_ops.py");
+const BUNDLED_SYSTEM_PROFILE_PY: &[u8] = include_bytes!("../plugins/linux-ops/bin/system_profile.py");
+
 fn version_tuple(value: &str) -> (u64, u64, u64) {
     let mut parts = value.trim_start_matches('v').split('.');
     let major = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
@@ -335,6 +339,48 @@ struct Registry {
 pub fn registry_dir() -> PathBuf {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     home.join(".config/local-harness/plugins")
+}
+
+pub fn bootstrap_bundled() -> Result<()> {
+    let destination = registry_dir().join("linux-ops");
+    let mut registry = load_registry()?;
+    if registry.plugins.iter().any(|entry| entry.name == "linux-ops") {
+        return Ok(());
+    }
+    if !destination.join("plugin.json").is_file() {
+        std::fs::create_dir_all(destination.join("bin"))?;
+        std::fs::write(destination.join("plugin.json"), BUNDLED_LINUX_OPS_JSON)?;
+        std::fs::write(destination.join("bin/linux_ops.py"), BUNDLED_LINUX_OPS_PY)?;
+        std::fs::write(destination.join("bin/system_profile.py"), BUNDLED_SYSTEM_PROFILE_PY)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for name in ["bin/linux_ops.py", "bin/system_profile.py"] {
+                let path = destination.join(name);
+                if let Ok(metadata) = std::fs::metadata(&path) {
+                    let mut permissions = metadata.permissions();
+                    permissions.set_mode(0o755);
+                    let _ = std::fs::set_permissions(path, permissions);
+                }
+            }
+        }
+    }
+    let loaded = load(&destination)?;
+    let Some(first) = loaded.first() else {
+        bail!("bundled linux-ops package is empty");
+    };
+    registry.plugins.push(Installed {
+        name: "linux-ops".to_string(),
+        version: first.version.clone(),
+        revision: first.revision,
+        api: first.api.clone(),
+        min_harness: first.min_harness.clone(),
+        enabled: true,
+        path: "linux-ops".to_string(),
+        tools: loaded.iter().map(|plugin| plugin.name.clone()).collect(),
+    });
+    save_registry(&registry)?;
+    Ok(())
 }
 
 fn registry_path() -> PathBuf {
