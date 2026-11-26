@@ -500,7 +500,7 @@ async fn execute_tool(tools: &ToolSet, name: &str, arguments: &str) -> String {
     }
 }
 
-fn load_skills(workspace: &std::path::Path) -> Vec<(String, String, String)> {
+fn load_skills(workspace: &std::path::Path) -> Vec<(String, String)> {
     let mut skills = Vec::new();
     let mut roots = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
@@ -524,7 +524,7 @@ fn load_skills(workspace: &std::path::Path) -> Vec<(String, String, String)> {
                 }
             }
             if !name.is_empty() {
-                skills.push((name, description, text.clone()));
+                skills.push((name, description));
             }
         }
     }
@@ -532,7 +532,6 @@ fn load_skills(workspace: &std::path::Path) -> Vec<(String, String, String)> {
         skills.push((
             "journal-check".to_string(),
             "Inspect systemd unit state, recent logs, and application errors safely.".to_string(),
-            JOURNAL_SKILL.to_string(),
         ));
     }
     skills
@@ -577,19 +576,13 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
     let skills = load_skills(workspace);
     let skill_summary = skills
         .iter()
-        .map(|(name, description, _)| format!("- {name}: {description}"))
+        .map(|(name, description)| format!("- {name}: {description}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let skill_procedures = skills
-        .iter()
-        .map(|(name, _, text)| format!("### Skill: {name}\n{text}"))
-        .collect::<Vec<_>>()
-        .join("\n\n");
     format!(
         "{role} `{}`.\n\
          Tools available: {}.\n\
-         Skills (load a procedure when its description matches; user may invoke @skill):\n{skill_summary}\n\
-         Full skill procedures:\n{skill_procedures}\n\
+         Skills: load a procedure with the `skill` tool when its description matches.\n{skill_summary}\n\
 
          MCP tools are connected and are expected capabilities, not optional extras:\n{mcp_summary}\n\
          - Use the matching MCP tool when the task fits; do not claim an MCP capability is unavailable without checking.\n\
@@ -621,6 +614,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
            6. Use the log_check REPORT block as the final status answer verbatim; do not add a new health narrative.\n\
            7. Only after steps 1-6, summarize; do not summarize the first lines of journalctl.\n\
          - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
+         - For journal/log/error tasks, load the `journal-check` skill with the skill tool before acting.\n\
          - Before relying on unfamiliar commands or flags, inspect the local environment documentation with man_page. Fedora changes between releases; do not assume flags from memory.\n\
          - Use the persistent system profile's OS version as context, but prefer local man pages and --help for exact options.\n\
          - Oversized-log/context procedure (mandatory):\n\

@@ -410,6 +410,7 @@ const spellEl = document.getElementById('spell');
 const scaleEl = document.getElementById('scale');
 
 let controller = null;
+let queuedPrompts = [];
 
 let assistantEl = null;
 let openTool = null;
@@ -2271,13 +2272,22 @@ function handleBlock(block) {
 
 async function send() {
   const text = promptEl.value;
-  if (!text.trim() || !token || sendEl.disabled) return;
+  if (!text.trim() || !token) return;
+  if (controller) {
+    queuedPrompts.push(text);
+    promptEl.value = '';
+    autoGrowPrompt();
+    add('meta', 'queued message (' + queuedPrompts.length + ') — Ctrl+Enter steers immediately');
+    return;
+  }
+  if (sendEl.disabled) return;
   addUserMessage(text);
   promptEl.value = '';
   autoGrowPrompt();
   sendEl.disabled = true;
   stopEl.disabled = false;
   controller = new AbortController();
+  sendEl.disabled = false;
   setStatus('thinking');
   assistantEl = null;
   openTool = null;
@@ -2325,6 +2335,12 @@ async function send() {
     if (!finished) setStatus('ready');
     finished = false;
     promptEl.focus();
+    if (queuedPrompts.length) {
+      const next = queuedPrompts.shift();
+      promptEl.value = next;
+      autoGrowPrompt();
+      send();
+    }
   }
 }
 
@@ -2339,7 +2355,20 @@ form.addEventListener('submit', (event) => {
 });
 stopEl.addEventListener('click', () => { if (controller) controller.abort(); });
 promptEl.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    if (controller && event.ctrlKey) {
+      const text = promptEl.value;
+      if (text.trim()) {
+        queuedPrompts.unshift(text);
+        promptEl.value = '';
+        autoGrowPrompt();
+        controller.abort();
+      }
+      return;
+    }
+    send();
+  }
 });
 </script>
 </body>

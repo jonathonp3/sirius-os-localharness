@@ -112,6 +112,7 @@ impl ToolSet {
             "list_dir".to_string(),
             "tool_result_get".to_string(),
             "session_search".to_string(),
+            "skill".to_string(),
             "file_history".to_string(),
         ];
         if self.web {
@@ -127,6 +128,7 @@ impl ToolSet {
             names.push("log_check".to_string());
             names.push("man_page".to_string());
             names.push("model_check".to_string());
+            names.push("model_status".to_string());
             for plugin in self.plugins.iter() {
                 names.push(plugin_tool_name(&plugin.name));
             }
@@ -170,6 +172,20 @@ impl ToolSet {
                             "limit": { "type": "integer", "description": "Maximum matches (default 20, max 50)" }
                         },
                         "required": ["query"]
+                    }
+                }
+            }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "skill",
+                    "description": "Load a skill procedure by name. Use before a task when the skill description matches.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string", "description": "Skill name, e.g. journal-check" }
+                        },
+                        "required": ["name"]
                     }
                 }
             }),
@@ -316,6 +332,14 @@ impl ToolSet {
             definitions.push(json!({
                 "type": "function",
                 "function": {
+                    "name": "model_status",
+                    "description": "Report the currently served llama-server models and context window.",
+                    "parameters": { "type": "object", "properties": {} }
+                }
+            }));
+            definitions.push(json!({
+                "type": "function",
+                "function": {
                     "name": "model_check",
                     "description": "Check a GGUF model file's size against available VRAM and RAM. Use before choosing or serving a local model.",
                     "parameters": {
@@ -433,6 +457,27 @@ impl ToolSet {
                     bail!("web tools are disabled (use --allow-web)");
                 }
                 crate::web::fetch(&string_arg(&arguments, "url")?).await
+            }
+            "skill" => {
+                let name = string_arg(&arguments, "name")?;
+                if !name.chars().all(|c| c.is_ascii_alphanumeric() || "-_".contains(c)) {
+                    bail!("invalid skill name");
+                }
+                let mut roots = Vec::new();
+                if let Some(home) = std::env::var_os("HOME") {
+                    roots.push(std::path::PathBuf::from(home).join(".config/local-harness/skills"));
+                }
+                roots.push(self.root.join(".localharness/skills"));
+                for root in roots {
+                    let path = root.join(&name).join("SKILL.md");
+                    if let Ok(text) = tokio::fs::read_to_string(&path).await {
+                        return Ok(text);
+                    }
+                }
+                if name == "journal-check" {
+                    return Ok("Journal-check skill is embedded; use log_check with a recent since window, read VERDICT and APPLICATION ERROR MARKERS, and use the REPORT block verbatim.".to_string());
+                }
+                bail!("unknown skill `{name}`");
             }
             "file_history" => {
                 let path = string_arg(&arguments, "path")?;
@@ -632,6 +677,13 @@ impl ToolSet {
                 }
                 entries.sort();
                 Ok(truncate(&entries.join("\n")))
+            }
+            "model_status" => {
+                let endpoint = std::env::var("HARNESS_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+                let root = endpoint.trim_end_matches('/').trim_end_matches("/v1");
+                let models = reqwest::get(format!("{root}/v1/models")).await?.text().await?;
+                let props = reqwest::get(format!("{root}/props")).await?.text().await?;
+                Ok(format!("models: {}\nprops: {}", models, props))
             }
             "model_check" => {
                 let path = PathBuf::from(string_arg(&arguments, "path")?);
