@@ -270,7 +270,7 @@ pub async fn run(
                     execute_tool(&tools, &call.function.name, &call.function.arguments).await
                 };
                 sink.tool_result(&result);
-                if call.function.name == "log_check"
+                if call.function.name == "plugin__log_check"
                     && (result.contains("Verdict: DEGRADED") || result.contains("VERDICT\nDEGRADED"))
                 {
                     log_degraded = true;
@@ -630,20 +630,20 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
          - The system profile is a point-in-time snapshot, not proof of current state. If the user asks for 'now', 'current', 'live', 'recent', 'logs', 'inspect', or 'check usage', run a live command with the correct bash tool and use its output.\n\
          - Never claim a service is healthy or logs are clean without reading live status/logs. Cite the command result.\n\
          - Journal runbook (mandatory):\n\
-           1. Call log_check with unit and since (default 24 hours ago). It returns only REPORT unless details=true.\n\
+           1. Call plugin__log_check with unit and since (default 24 hours ago). It returns only REPORT unless details=true.\n\
            2. Read VERDICT first, then SERVICE: ActiveState, NRestarts, ActiveEnterTimestamp.\n\
            3. Read APPLICATION ERROR MARKERS and WARNINGS/ERRORS.\n\
            4. Report every error/failed/exceeded/panic marker, even if the service is active.\n\
            5. If VERDICT is DEGRADED or FAILED, do not call the service normal.\n\
-           6. Use the log_check REPORT block as the final status answer verbatim; do not add a new health narrative.\n\
+           6. Use the plugin__log_check REPORT block as the final status answer verbatim; do not add a new health narrative.\n\
            7. Only after steps 1-6, summarize; do not summarize the first lines of journalctl.\n\
-         - Never run a bare `journalctl -u <unit>` command. Use log_check; if raw output is required, add `--since` and `-n`.\n\
+         - Never run a bare `journalctl -u <unit>` command. Use plugin__log_check; if raw output is required, add `--since` and `-n`.\n\
          - For journal/log/error tasks, load the `journal-check` skill with the skill tool before acting.\n\
          - If the user writes `@skill-name`, load that skill with the skill tool first.\n\
-         - Before relying on unfamiliar commands or flags, inspect the local environment documentation with man_page. Fedora changes between releases; do not assume flags from memory.\n\
+         - Before relying on unfamiliar commands or flags, inspect the local environment documentation with plugin__man_page. Fedora changes between releases; do not assume flags from memory.\n\
          - Use the persistent system profile's OS version as context, but prefer local man pages and --help for exact options.\n\
          - Oversized-log/context procedure (mandatory):\n\
-           1. Use log_check for journal/log questions; never dump the full journal.\n\
+           1. Use plugin__log_check for journal/log questions; never dump the full journal.\n\
            2. Start with a recent window (24 hours). Recent logs and current tool results take priority over historical summaries.\n\
            3. Do not paste or repeat full log output back into the chat; summarize the verdict and a few relevant lines.\n\
            4. If a request exceeds the context window, do not retry the same prompt. Reduce pasted content, drop old logs, or start a fresh chat.\n\

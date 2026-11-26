@@ -126,12 +126,7 @@ impl ToolSet {
         if self.policy.allows_shell() {
             names.push("bash".to_string());
             names.push("host_bash".to_string());
-            names.push("log_check".to_string());
-            names.push("man_page".to_string());
             names.push("model_check".to_string());
-            names.push("model_status".to_string());
-            names.push("model_load".to_string());
-            names.push("model_unload".to_string());
             for plugin in self.plugins.iter() {
                 names.push(plugin_tool_name(&plugin.name));
             }
@@ -402,6 +397,13 @@ impl ToolSet {
             }
         }
         definitions.retain(|definition| {
+            let core_hidden = matches!(
+                definition.get("function").and_then(|function| function.get("name")).and_then(Value::as_str),
+                Some("log_check" | "man_page" | "model_status" | "model_load" | "model_unload")
+            );
+            if core_hidden {
+                return false;
+            }
             definition
                 .get("function")
                 .and_then(|function| function.get("name"))
@@ -1196,7 +1198,9 @@ fn truncate(text: &str) -> String {
 
 /// Conservative destructive-command detection for the bash tool.
 pub fn destructive_reason(name: &str, arguments: &str) -> Option<String> {
-    if name == "model_unload" || name == "model_load" {
+    if name == "model_unload" || name == "model_load"
+        || name == "plugin__model_unload" || name == "plugin__model_load"
+    {
         return Some(format!("model lifecycle: {name} changes the serving state"));
     }
     if name != "bash" && name != "host_bash" {

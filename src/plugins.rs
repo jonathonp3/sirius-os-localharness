@@ -25,6 +25,8 @@ pub struct Plugin {
     pub api: String,
     #[serde(default)]
     pub min_harness: String,
+    #[serde(default)]
+    pub package: String,
     #[serde(skip)]
     pub package_dir: Option<PathBuf>,
 }
@@ -45,6 +47,34 @@ fn version_tuple(value: &str) -> (u64, u64, u64) {
     let minor = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
     let patch = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
     (major, minor, patch)
+}
+
+#[derive(Debug, Deserialize)]
+struct PluginTool {
+    name: String,
+    description: String,
+    command: String,
+    #[serde(default)]
+    parameters: serde_json::Value,
+    #[serde(default)]
+    required: Vec<String>,
+    #[serde(default = "default_sandbox")]
+    sandbox: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct PackageFile {
+    name: String,
+    #[serde(default)]
+    version: String,
+    #[serde(default)]
+    revision: u64,
+    #[serde(default = "default_api")]
+    api: String,
+    #[serde(default)]
+    min_harness: String,
+    #[serde(default)]
+    tools: Vec<PluginTool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -112,8 +142,14 @@ pub fn load(path: &Path) -> Result<Vec<Plugin>> {
         if direct.is_file() {
             let text = std::fs::read_to_string(&direct)
                 .with_context(|| format!("reading {}", direct.display()))?;
-            let mut plugin: Plugin = serde_json::from_str(&text)
+            let value: serde_json::Value = serde_json::from_str(&text)
                 .with_context(|| format!("parsing {}", direct.display()))?;
+            if value.get("tools").is_some() {
+                return load_package_file(&direct, path);
+            }
+            let mut plugin: Plugin = serde_json::from_value(value)
+                .with_context(|| format!("parsing {}", direct.display()))?;
+            plugin.package = plugin.name.clone();
             plugin.package_dir = Some(path.to_path_buf());
             let mut names = std::collections::HashSet::new();
             validate(&plugin, &mut names)?;
@@ -147,6 +183,34 @@ pub fn load(path: &Path) -> Result<Vec<Plugin>> {
 }
 
 
+fn load_package_file(path: &Path, package_dir: &Path) -> Result<Vec<Plugin>> {
+    let package: PackageFile = serde_json::from_str(
+        &std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?,
+    )
+    .with_context(|| format!("parsing {}", path.display()))?;
+    let mut plugins = Vec::new();
+    let mut names = std::collections::HashSet::new();
+    for tool in package.tools {
+        let plugin = Plugin {
+            name: tool.name,
+            description: tool.description,
+            command: tool.command,
+            parameters: tool.parameters,
+            required: tool.required,
+            sandbox: tool.sandbox,
+            version: package.version.clone(),
+            revision: package.revision,
+            api: package.api.clone(),
+            min_harness: package.min_harness.clone(),
+            package: package.name.clone(),
+            package_dir: Some(package_dir.to_path_buf()),
+        };
+        validate(&plugin, &mut names)?;
+        plugins.push(plugin);
+    }
+    Ok(plugins)
+}
+
 fn load_packages(root: &Path) -> Result<Vec<Plugin>> {
     let manifest_path = root.join("manifest.json");
     let mut plugins = Vec::new();
@@ -172,6 +236,9 @@ fn load_packages(root: &Path) -> Result<Vec<Plugin>> {
             if plugin.revision == 0 {
                 plugin.revision = package.revision;
             }
+            if plugin.package.is_empty() {
+                plugin.package = plugin.name.clone();
+            }
             plugin.package_dir = plugin_path.parent().map(Path::to_path_buf);
             validate(&plugin, &mut names)?;
             plugins.push(plugin);
@@ -187,8 +254,18 @@ fn load_packages(root: &Path) -> Result<Vec<Plugin>> {
         }
         let text = std::fs::read_to_string(&plugin_path)
             .with_context(|| format!("reading {}", plugin_path.display()))?;
-        let mut plugin: Plugin = serde_json::from_str(&text)
+        let value: serde_json::Value = serde_json::from_str(&text)
             .with_context(|| format!("parsing {}", plugin_path.display()))?;
+        if value.get("tools").is_some() {
+            let package_dir = plugin_path.parent().context("plugin directory")?;
+            plugins.extend(load_package_file(&plugin_path, package_dir)?);
+            continue;
+        }
+        let mut plugin: Plugin = serde_json::from_value(value)
+            .with_context(|| format!("parsing {}", plugin_path.display()))?;
+        if plugin.package.is_empty() {
+            plugin.package = plugin.name.clone();
+        }
         plugin.package_dir = plugin_path.parent().map(Path::to_path_buf);
         validate(&plugin, &mut names)?;
         plugins.push(plugin);
@@ -211,6 +288,8 @@ pub struct Installed {
     #[serde(default)]
     pub enabled: bool,
     pub path: String,
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -321,25 +400,26 @@ pub fn install(source: &Path) -> Result<Installed> {
 
 fn install_from_dir(source: &Path) -> Result<Installed> {
     let loaded = load(source)?;
-    if loaded.len() != 1 {
-        bail!("install source must contain exactly one plugin package");
-    }
-    let plugin = loaded.into_iter().next().context("empty plugin package")?;
-    let destination = registry_dir().join(&plugin.name);
+    let Some(first) = loaded.first() else {
+        bail!("empty plugin package");
+    };
+    let package_name = first.package.clone();
+    let destination = registry_dir().join(&package_name);
     if destination.exists() {
         std::fs::remove_dir_all(&destination)?;
     }
     copy_dir(source, &destination)?;
     let mut registry = load_registry()?;
-    registry.plugins.retain(|entry| entry.name != plugin.name);
+    registry.plugins.retain(|entry| entry.name != package_name);
     let entry = Installed {
-        name: plugin.name.clone(),
-        version: plugin.version.clone(),
-        revision: plugin.revision,
-        api: plugin.api.clone(),
-        min_harness: plugin.min_harness.clone(),
+        name: package_name.clone(),
+        version: first.version.clone(),
+        revision: first.revision,
+        api: first.api.clone(),
+        min_harness: first.min_harness.clone(),
         enabled: true,
-        path: plugin.name.clone(),
+        path: package_name,
+        tools: loaded.iter().map(|plugin| plugin.name.clone()).collect(),
     };
     registry.plugins.push(entry.clone());
     save_registry(&registry)?;

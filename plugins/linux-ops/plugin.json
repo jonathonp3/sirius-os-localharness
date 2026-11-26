@@ -1,0 +1,15 @@
+{
+  "name": "linux-ops",
+  "version": "1.0.0",
+  "revision": 1,
+  "api": "1",
+  "min_harness": "0.1.0",
+  "description": "Linux system operations",
+  "tools": [
+    {"name":"log_check","description":"Check a user systemd unit and its recent logs.","command":"python3 bin/linux_ops.py log-check '{unit}'","parameters":{"unit":{"type":"string","description":"systemd user unit"}},"required":["unit"],"sandbox":false},
+    {"name":"man_page","description":"Read a command's man page or --help.","command":"python3 bin/linux_ops.py man-page '{command}'","parameters":{"command":{"type":"string","description":"command name"}},"required":["command"],"sandbox":false},
+    {"name":"model_status","description":"Report served models and server properties.","command":"python3 bin/linux_ops.py model-status","parameters":{},"required":[],"sandbox":false},
+    {"name":"model_load","description":"Start the configured llama-server user service.","command":"python3 bin/linux_ops.py model-load","parameters":{},"required":[],"sandbox":false},
+    {"name":"model_unload","description":"Stop the configured llama-server user service.","command":"python3 bin/linux_ops.py model-unload","parameters":{},"required":[],"sandbox":false}
+  ]
+}
