@@ -21,12 +21,30 @@ pub struct Plugin {
     pub version: String,
     #[serde(default)]
     pub revision: u64,
+    #[serde(default = "default_api")]
+    pub api: String,
+    #[serde(default)]
+    pub min_harness: String,
     #[serde(skip)]
     pub package_dir: Option<PathBuf>,
 }
 
 fn default_sandbox() -> bool {
     true
+}
+
+fn default_api() -> String {
+    "1".to_string()
+}
+
+const PLUGIN_API: &str = "1";
+
+fn version_tuple(value: &str) -> (u64, u64, u64) {
+    let mut parts = value.trim_start_matches('v').split('.');
+    let major = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+    let minor = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+    let patch = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+    (major, minor, patch)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -71,6 +89,19 @@ fn validate(plugin: &Plugin, names: &mut std::collections::HashSet<String>) -> R
     }
     if plugin.command.trim().is_empty() {
         bail!("plugin `{}` has an empty command", plugin.name);
+    }
+    if plugin.api != PLUGIN_API {
+        bail!("plugin `{}` requires plugin API {}, this harness supports {}", plugin.name, plugin.api, PLUGIN_API);
+    }
+    if !plugin.min_harness.is_empty()
+        && version_tuple(&plugin.min_harness) > version_tuple(env!("CARGO_PKG_VERSION"))
+    {
+        bail!(
+            "plugin `{}` requires harness >= {}, this is {}",
+            plugin.name,
+            plugin.min_harness,
+            env!("CARGO_PKG_VERSION")
+        );
     }
     Ok(())
 }
@@ -173,6 +204,10 @@ pub struct Installed {
     pub version: String,
     #[serde(default)]
     pub revision: u64,
+    #[serde(default = "default_api")]
+    pub api: String,
+    #[serde(default)]
+    pub min_harness: String,
     #[serde(default)]
     pub enabled: bool,
     pub path: String,
@@ -227,6 +262,42 @@ pub fn load_installed() -> Result<Vec<Plugin>> {
     Ok(plugins)
 }
 
+fn install_archive(source: &Path) -> Result<Installed> {
+    let temp = std::env::temp_dir().join(format!("local-harness-plugin-{}", std::process::id()));
+    if temp.exists() {
+        std::fs::remove_dir_all(&temp)?;
+    }
+    std::fs::create_dir_all(&temp)?;
+    let file = std::fs::File::open(source)
+        .with_context(|| format!("opening {}", source.display()))?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(decoder);
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?;
+        if path.is_absolute() || path.components().any(|component| matches!(component, std::path::Component::ParentDir | std::path::Component::RootDir)) {
+            bail!("archive entry escapes the install directory: {}", path.display());
+        }
+        entry.unpack_in(&temp)?;
+    }
+    let root = if temp.join("plugin.json").is_file() {
+        temp.clone()
+    } else {
+        let candidates: Vec<PathBuf> = std::fs::read_dir(&temp)?
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.join("plugin.json").is_file())
+            .collect();
+        if candidates.len() != 1 {
+            bail!("archive must contain one plugin package root");
+        }
+        candidates[0].clone()
+    };
+    let result = install_from_dir(&root);
+    let _ = std::fs::remove_dir_all(&temp);
+    result
+}
+
 fn copy_dir(source: &Path, destination: &Path) -> Result<()> {
     std::fs::create_dir_all(destination)?;
     for entry in std::fs::read_dir(source)? {
@@ -242,9 +313,13 @@ fn copy_dir(source: &Path, destination: &Path) -> Result<()> {
 }
 
 pub fn install(source: &Path) -> Result<Installed> {
-    if !source.is_dir() {
-        bail!("install source must be a plugin package directory");
+    if source.is_file() {
+        return install_archive(source);
     }
+    install_from_dir(source)
+}
+
+fn install_from_dir(source: &Path) -> Result<Installed> {
     let loaded = load(source)?;
     if loaded.len() != 1 {
         bail!("install source must contain exactly one plugin package");
@@ -261,6 +336,8 @@ pub fn install(source: &Path) -> Result<Installed> {
         name: plugin.name.clone(),
         version: plugin.version.clone(),
         revision: plugin.revision,
+        api: plugin.api.clone(),
+        min_harness: plugin.min_harness.clone(),
         enabled: true,
         path: plugin.name.clone(),
     };
