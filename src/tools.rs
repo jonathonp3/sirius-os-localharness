@@ -138,11 +138,13 @@ impl ToolSet {
                 "type": "function",
                 "function": {
                     "name": "tool_result_get",
-                    "description": "Retrieve the full output of an earlier tool call that was evicted from the model context. Use the handle shown in the eviction stub.",
+                    "description": "Retrieve an earlier tool result from the session. Use the handle shown in the eviction stub. For large results, page with offset and limit.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "handle": { "type": "string", "description": "Tool call id shown in the eviction stub" }
+                            "handle": { "type": "string", "description": "Tool call id shown in the eviction stub" },
+                            "offset": { "type": "integer", "description": "Character offset (default 0)" },
+                            "limit": { "type": "integer", "description": "Characters to return (default 12000, max 20000)" }
                         },
                         "required": ["handle"]
                     }
@@ -415,7 +417,21 @@ impl ToolSet {
                         continue;
                     }
                     if let Some(content) = message.get("content").and_then(Value::as_str) {
-                        return Ok(content.to_string());
+                        let offset = arguments.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
+                        let limit = arguments
+                            .get("limit")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(12_000)
+                            .clamp(1_000, 20_000) as usize;
+                        let chars: Vec<char> = content.chars().collect();
+                        let start = offset.min(chars.len());
+                        let end = (start + limit).min(chars.len());
+                        let slice: String = chars[start..end].iter().collect();
+                        return Ok(format!(
+                            "tool result {handle}: chars {start}..{end} of {}\n{}",
+                            chars.len(),
+                            slice
+                        ));
                     }
                 }
                 bail!("no stored tool result with handle `{handle}`");
