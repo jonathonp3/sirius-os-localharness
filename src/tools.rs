@@ -831,24 +831,26 @@ impl ToolSet {
                     &self.root,
                 ).await?;
                 let recent_text = String::from_utf8_lossy(&recent.stdout).to_string();
+                let is_application_warning = |line: &str| {
+                    let lower = line.to_ascii_lowercase();
+                    line.contains(" W ") || line.contains(" W  ") || lower.contains("warning")
+                };
                 let app_errors: Vec<&str> = recent_text
                     .lines()
                     .filter(|line| {
                         let lower = line.to_ascii_lowercase();
-                        line.contains(" E srv")
-                            || lower.contains("error")
-                            || lower.contains("failed")
-                            || lower.contains("exceed")
-                            || lower.contains("panic")
+                        !is_application_warning(line)
+                            && (line.contains(" E ") || line.contains(" E  ")
+                                || lower.contains("error")
+                                || lower.contains("failed")
+                                || lower.contains("exceed")
+                                || lower.contains("panic"))
                     })
                     .take(30)
                     .collect();
                 let app_warnings: Vec<&str> = recent_text
                     .lines()
-                    .filter(|line| {
-                        line.contains(" W srv")
-                            && !app_errors.iter().any(|error| std::ptr::eq(*error, *line))
-                    })
+                    .filter(|line| is_application_warning(line))
                     .take(30)
                     .collect();
                 let status_text = String::from_utf8_lossy(&status.stdout).trim().to_string();
