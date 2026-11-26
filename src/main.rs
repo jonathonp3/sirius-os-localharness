@@ -248,7 +248,11 @@ async fn main() -> Result<()> {
     let plugins_path = cli
         .plugins
         .clone()
-        .or_else(|| registry::discover_named(&workspace, "plugins.json"));
+        .or_else(|| registry::discover_named(&workspace, "plugins.json"))
+        .or_else(|| {
+            let directory = workspace.join("plugins");
+            directory.is_dir().then_some(directory)
+        });
     let plugin_tools: Arc<Vec<plugins::Plugin>> = match plugins_path {
         Some(path) => Arc::new(plugins::load(&path)?),
         None => Arc::new(Vec::new()),

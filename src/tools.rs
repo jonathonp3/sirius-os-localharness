@@ -375,7 +375,11 @@ impl ToolSet {
                     "type": "function",
                     "function": {
                         "name": plugin_tool_name(&plugin.name),
-                        "description": plugin.description,
+                        "description": if plugin.version.is_empty() {
+                            plugin.description.clone()
+                        } else {
+                            format!("{} (v{} r{})", plugin.description, plugin.version, plugin.revision)
+                        },
                         "parameters": {
                             "type": "object",
                             "properties": plugin.parameters,
@@ -1037,9 +1041,10 @@ impl ToolSet {
             direct.arg("-lc").arg(&command);
             direct
         };
+        let working_dir = plugin.package_dir.as_deref().unwrap_or(&self.root);
         let output = tokio::time::timeout(
             Duration::from_secs(60),
-            process.current_dir(&self.root).kill_on_drop(true).output(),
+            process.current_dir(working_dir).kill_on_drop(true).output(),
         )
         .await
         .with_context(|| format!("plugin `{}` timed out after 60 s", plugin.name))??;
