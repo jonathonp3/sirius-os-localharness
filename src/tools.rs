@@ -681,6 +681,18 @@ impl ToolSet {
         }
     }
 
+    pub fn plugin_permission_reason(&self, name: &str) -> Option<String> {
+        let plugin_name = name.strip_prefix("plugin__")?;
+        let plugin = self.plugins.iter().find(|plugin| plugin.name == plugin_name)?;
+        if plugin.permissions.host {
+            return Some("plugin requests host access".to_string());
+        }
+        if plugin.permissions.network {
+            return Some("plugin requests network access".to_string());
+        }
+        None
+    }
+
     async fn execute_plugin(&self, plugin: &Plugin, arguments: &Value) -> Result<String> {
         for required in &plugin.required {
             if arguments.get(required).is_none() {
@@ -711,10 +723,17 @@ impl ToolSet {
                 .arg("--dev").arg("/dev")
                 .arg("--proc").arg("/proc")
                 .arg("--tmpfs").arg("/tmp")
-                .arg("--unshare-net")
                 .arg("--unshare-pid")
-                .arg("--die-with-parent")
-                .arg("--bind").arg(&self.root).arg(&self.root)
+                .arg("--die-with-parent");
+            if !plugin.permissions.network {
+                sandbox.arg("--unshare-net");
+            }
+            if plugin.permissions.write == "none" {
+                sandbox.arg("--ro-bind").arg(&self.root).arg(&self.root);
+            } else {
+                sandbox.arg("--bind").arg(&self.root).arg(&self.root);
+            }
+            sandbox
                 .arg("bash").arg("-lc").arg(&command);
             sandbox
         } else {

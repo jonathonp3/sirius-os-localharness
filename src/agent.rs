@@ -249,6 +249,7 @@ pub async fn run(
                     execute_tool(&tools, &call.function.name, &call.function.arguments).await
                 } else if let Some(reason) = crate::tools::destructive_reason(&call.function.name, &call.function.arguments)
                     .or_else(|| web_approval_reason(&call.function.name, &call.function.arguments))
+                    .or_else(|| tools.plugin_permission_reason(&call.function.name))
                 {
                     let network = reason.starts_with("read-only web");
                     let request = ApprovalRequest {

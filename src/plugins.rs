@@ -27,8 +27,37 @@ pub struct Plugin {
     pub min_harness: String,
     #[serde(default)]
     pub package: String,
+    #[serde(default)]
+    pub permissions: Permissions,
     #[serde(skip)]
     pub package_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Permissions {
+    #[serde(default)]
+    pub network: bool,
+    #[serde(default = "default_write")]
+    pub write: String,
+    #[serde(default)]
+    pub host: bool,
+    #[serde(default)]
+    pub shell: bool,
+}
+
+impl Default for Permissions {
+    fn default() -> Self {
+        Self {
+            network: false,
+            write: default_write(),
+            host: false,
+            shell: false,
+        }
+    }
+}
+
+fn default_write() -> String {
+    "workspace".to_string()
 }
 
 fn default_sandbox() -> bool {
@@ -60,6 +89,8 @@ struct PluginTool {
     required: Vec<String>,
     #[serde(default = "default_sandbox")]
     sandbox: bool,
+    #[serde(default)]
+    permissions: Permissions,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +106,8 @@ struct PackageFile {
     min_harness: String,
     #[serde(default)]
     tools: Vec<PluginTool>,
+    #[serde(default)]
+    permissions: Permissions,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -203,6 +236,7 @@ fn load_package_file(path: &Path, package_dir: &Path) -> Result<Vec<Plugin>> {
             api: package.api.clone(),
             min_harness: package.min_harness.clone(),
             package: package.name.clone(),
+            permissions: tool.permissions.clone(),
             package_dir: Some(package_dir.to_path_buf()),
         };
         validate(&plugin, &mut names)?;

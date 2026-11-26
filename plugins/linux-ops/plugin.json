@@ -19,7 +19,13 @@
       "required": [
         "unit"
       ],
-      "sandbox": false
+      "sandbox": false,
+      "permissions": {
+        "network": false,
+        "write": "none",
+        "host": true,
+        "shell": true
+      }
     },
     {
       "name": "man_page",
@@ -34,7 +40,13 @@
       "required": [
         "command"
       ],
-      "sandbox": false
+      "sandbox": false,
+      "permissions": {
+        "network": false,
+        "write": "none",
+        "host": true,
+        "shell": true
+      }
     },
     {
       "name": "model_status",
@@ -42,7 +54,13 @@
       "command": "python3 bin/linux_ops.py model-status",
       "parameters": {},
       "required": [],
-      "sandbox": false
+      "sandbox": false,
+      "permissions": {
+        "network": false,
+        "write": "none",
+        "host": true,
+        "shell": true
+      }
     },
     {
       "name": "model_load",
@@ -50,7 +68,13 @@
       "command": "python3 bin/linux_ops.py model-load",
       "parameters": {},
       "required": [],
-      "sandbox": false
+      "sandbox": false,
+      "permissions": {
+        "network": false,
+        "write": "none",
+        "host": true,
+        "shell": true
+      }
     },
     {
       "name": "model_unload",
@@ -58,7 +82,13 @@
       "command": "python3 bin/linux_ops.py model-unload",
       "parameters": {},
       "required": [],
-      "sandbox": false
+      "sandbox": false,
+      "permissions": {
+        "network": false,
+        "write": "none",
+        "host": true,
+        "shell": true
+      }
     },
     {
       "name": "model_check",
@@ -73,7 +103,13 @@
       "required": [
         "path"
       ],
-      "sandbox": false
+      "sandbox": false,
+      "permissions": {
+        "network": false,
+        "write": "none",
+        "host": true,
+        "shell": true
+      }
     },
     {
       "name": "system_profile",
@@ -81,7 +117,19 @@
       "command": "python3 bin/linux_ops.py system-profile",
       "parameters": {},
       "required": [],
-      "sandbox": false
+      "sandbox": false,
+      "permissions": {
+        "network": false,
+        "write": "none",
+        "host": true,
+        "shell": true
+      }
     }
-  ]
+  ],
+  "permissions": {
+    "network": false,
+    "write": "none",
+    "host": true,
+    "shell": true
+  }
 }
