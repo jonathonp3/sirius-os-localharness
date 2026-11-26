@@ -18,7 +18,7 @@ use std::io::Write as _;
 use std::sync::Arc;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 
 use agent::EventSink;
@@ -169,12 +169,31 @@ enum Command {
         #[arg(long, default_value_t = 1)]
         max_depth: usize,
     },
+    /// Manage versioned command-backed plugin packages.
+    Plugins {
+        #[command(subcommand)]
+        action: PluginAction,
+    },
     /// List registry profiles and models exposed by the server.
     Models,
     /// List local session logs.
     Sessions,
     /// Show the active profile, model, hardware, context budget, and health.
     Doctor,
+}
+
+#[derive(Subcommand, Debug)]
+enum PluginAction {
+    /// List installed plugins and their enabled state.
+    List,
+    /// Install a plugin package directory into the local registry.
+    Install { path: PathBuf },
+    /// Enable an installed plugin.
+    Enable { name: String },
+    /// Disable an installed plugin without removing it.
+    Disable { name: String },
+    /// Remove an installed plugin and its files.
+    Remove { name: String },
 }
 
 #[tokio::main]
@@ -255,7 +274,14 @@ async fn main() -> Result<()> {
         });
     let plugin_tools: Arc<Vec<plugins::Plugin>> = match plugins_path {
         Some(path) => Arc::new(plugins::load(&path)?),
-        None => Arc::new(Vec::new()),
+        None => {
+            let mut loaded = plugins::load_installed()?;
+            let workspace_plugins = workspace.join("plugins");
+            if workspace_plugins.is_dir() {
+                loaded.extend(plugins::load(&workspace_plugins)?);
+            }
+            Arc::new(loaded)
+        }
     };
     let mcp_path = cli
         .mcp
@@ -422,6 +448,49 @@ async fn main() -> Result<()> {
             };
             eprintln!("[workflow] session {}", session.id);
             workflow::run(config, &file, &session).await
+        }
+        Command::Plugins { action } => {
+            match action {
+                PluginAction::List => {
+                    let entries = plugins::list_installed()?;
+                    if entries.is_empty() {
+                        println!("no installed plugins");
+                    }
+                    for entry in entries {
+                        println!(
+                            "{} {} r{} {}{}",
+                            if entry.enabled { "on " } else { "off" },
+                            entry.name,
+                            entry.revision,
+                            entry.version,
+                            if entry.enabled { "" } else { " (disabled)" }
+                        );
+                    }
+                }
+                PluginAction::Install { path } => {
+                    let entry = plugins::install(&path)?;
+                    println!("installed {} {} r{}", entry.name, entry.version, entry.revision);
+                }
+                PluginAction::Enable { name } => {
+                    if !plugins::set_enabled(&name, true)? {
+                        bail!("unknown plugin `{name}`");
+                    }
+                    println!("enabled {name}");
+                }
+                PluginAction::Disable { name } => {
+                    if !plugins::set_enabled(&name, false)? {
+                        bail!("unknown plugin `{name}`");
+                    }
+                    println!("disabled {name}");
+                }
+                PluginAction::Remove { name } => {
+                    if !plugins::remove(&name)? {
+                        bail!("unknown plugin `{name}`");
+                    }
+                    println!("removed {name}");
+                }
+            }
+            Ok(())
         }
         Command::Models => {
             if let Some(registry) = &loaded {

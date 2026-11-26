@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use anyhow::{bail, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Plugin {
@@ -77,6 +77,17 @@ fn validate(plugin: &Plugin, names: &mut std::collections::HashSet<String>) -> R
 
 pub fn load(path: &Path) -> Result<Vec<Plugin>> {
     if path.is_dir() {
+        let direct = path.join("plugin.json");
+        if direct.is_file() {
+            let text = std::fs::read_to_string(&direct)
+                .with_context(|| format!("reading {}", direct.display()))?;
+            let mut plugin: Plugin = serde_json::from_str(&text)
+                .with_context(|| format!("parsing {}", direct.display()))?;
+            plugin.package_dir = Some(path.to_path_buf());
+            let mut names = std::collections::HashSet::new();
+            validate(&plugin, &mut names)?;
+            return Ok(vec![plugin]);
+        }
         return load_packages(path);
     }
 
@@ -152,4 +163,133 @@ fn load_packages(root: &Path) -> Result<Vec<Plugin>> {
         plugins.push(plugin);
     }
     Ok(plugins)
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Installed {
+    pub name: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub revision: u64,
+    #[serde(default)]
+    pub enabled: bool,
+    pub path: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Registry {
+    #[serde(default)]
+    plugins: Vec<Installed>,
+}
+
+pub fn registry_dir() -> PathBuf {
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    home.join(".config/local-harness/plugins")
+}
+
+fn registry_path() -> PathBuf {
+    registry_dir().join("registry.json")
+}
+
+fn load_registry() -> Result<Registry> {
+    let path = registry_path();
+    match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Registry::default()),
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
+fn save_registry(registry: &Registry) -> Result<()> {
+    let path = registry_path();
+    std::fs::create_dir_all(path.parent().context("registry parent")?)?;
+    let temp = path.with_extension("json.tmp");
+    std::fs::write(&temp, serde_json::to_string_pretty(registry)?)?;
+    std::fs::rename(temp, path)?;
+    Ok(())
+}
+
+pub fn list_installed() -> Result<Vec<Installed>> {
+    Ok(load_registry()?.plugins)
+}
+
+pub fn load_installed() -> Result<Vec<Plugin>> {
+    let registry = load_registry()?;
+    let mut plugins = Vec::new();
+    for entry in registry.plugins.into_iter().filter(|entry| entry.enabled) {
+        let path = registry_dir().join(&entry.path);
+        for plugin in load(&path)? {
+            plugins.push(plugin);
+        }
+    }
+    Ok(plugins)
+}
+
+fn copy_dir(source: &Path, destination: &Path) -> Result<()> {
+    std::fs::create_dir_all(destination)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let target = destination.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn install(source: &Path) -> Result<Installed> {
+    if !source.is_dir() {
+        bail!("install source must be a plugin package directory");
+    }
+    let loaded = load(source)?;
+    if loaded.len() != 1 {
+        bail!("install source must contain exactly one plugin package");
+    }
+    let plugin = loaded.into_iter().next().context("empty plugin package")?;
+    let destination = registry_dir().join(&plugin.name);
+    if destination.exists() {
+        std::fs::remove_dir_all(&destination)?;
+    }
+    copy_dir(source, &destination)?;
+    let mut registry = load_registry()?;
+    registry.plugins.retain(|entry| entry.name != plugin.name);
+    let entry = Installed {
+        name: plugin.name.clone(),
+        version: plugin.version.clone(),
+        revision: plugin.revision,
+        enabled: true,
+        path: plugin.name.clone(),
+    };
+    registry.plugins.push(entry.clone());
+    save_registry(&registry)?;
+    Ok(entry)
+}
+
+pub fn set_enabled(name: &str, enabled: bool) -> Result<bool> {
+    let mut registry = load_registry()?;
+    let Some(entry) = registry.plugins.iter_mut().find(|entry| entry.name == name) else {
+        return Ok(false);
+    };
+    entry.enabled = enabled;
+    save_registry(&registry)?;
+    Ok(true)
+}
+
+pub fn remove(name: &str) -> Result<bool> {
+    let mut registry = load_registry()?;
+    let before = registry.plugins.len();
+    registry.plugins.retain(|entry| entry.name != name);
+    if registry.plugins.len() == before {
+        return Ok(false);
+    }
+    let destination = registry_dir().join(name);
+    if destination.exists() {
+        std::fs::remove_dir_all(destination)?;
+    }
+    save_registry(&registry)?;
+    Ok(true)
 }
