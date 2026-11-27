@@ -50,6 +50,19 @@ struct AppState {
     mcp_failures: Arc<Vec<crate::mcp::McpFailure>>,
 }
 
+fn running_provider(config: &agent::Config) -> &'static str {
+    if !config.remote {
+        return "local";
+    }
+    if config.endpoint.contains("deepseek") {
+        "deepseek"
+    } else if config.endpoint.contains("moonshot") || config.endpoint.contains("kimi") {
+        "kimi"
+    } else {
+        "remote"
+    }
+}
+
 pub async fn run(
     config: agent::Config,
     data_dir: PathBuf,
@@ -279,6 +292,17 @@ async fn providers_status(
         return unauthorized();
     }
     let active = providers::active().unwrap_or_else(|_| "local".to_string());
+    let current_provider = running_provider(&state.config);
+    let current_model = if state.config.remote {
+        state.config.model.clone()
+    } else {
+        modelctl(&["list"])
+            .await
+            .ok()
+            .and_then(|output| serde_json::from_str::<Value>(&output).ok())
+            .and_then(|value| value.get("active").and_then(Value::as_str).map(ToString::to_string))
+            .unwrap_or_else(|| state.config.model.clone())
+    };
     let list: Vec<Value> = providers::PROVIDERS
         .iter()
         .map(|provider| {
@@ -294,9 +318,11 @@ async fn providers_status(
         .collect();
     Json(json!({
         "active": active,
-        "current_model": state.config.model,
+        "current_provider": current_provider,
+        "current_model": current_model,
         "current_endpoint": state.config.endpoint,
         "current_remote": state.config.remote,
+        "restart_required": active != current_provider,
         "providers": list,
         "secrets_path": providers::secrets_path().map(|path| path.to_string_lossy().to_string()).unwrap_or_default(),
     }))
@@ -348,6 +374,10 @@ async fn local_models(
         Ok(output) => match serde_json::from_str::<Value>(&output) {
             Ok(mut value) => {
                 let tags = read_model_tags(&state);
+                value["chat_provider"] = json!(running_provider(&state.config));
+                value["chat_remote"] = json!(state.config.remote);
+                value["chat_model"] = json!(state.config.model);
+                value["chat_endpoint"] = json!(state.config.endpoint);
                 if let Some(models) = value.get_mut("models").and_then(Value::as_array_mut) {
                     for model in models {
                         let path = model.get("path").and_then(Value::as_str).unwrap_or_default();

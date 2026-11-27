@@ -146,6 +146,7 @@ body.sidebar-open { padding-left:350px; }
 .provider-section { border-bottom:1px solid var(--border); margin-bottom:10px; padding-bottom:10px; }
 .provider-status { color:var(--muted); font-size:13px; margin:5px 0; white-space:pre-wrap; }
 .provider-hint { color:var(--muted); font-size:12px; line-height:1.4; }
+.provider-warning { color:#e0a030; font-size:13px; font-weight:600; margin-top:4px; }
 #provider-select { flex:1; min-width:0; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:5px 7px; font-size:13px; }
 .model-install { border-top:1px solid var(--border); margin-top:10px; padding-top:10px; }
 .model-install-title { font-size:14px; font-weight:600; margin-bottom:7px; }
@@ -437,6 +438,7 @@ const scaleEl = document.getElementById('scale');
 
 let controller = null;
 let queuedPrompts = [];
+let providerState = null;
 
 let assistantEl = null;
 let openTool = null;
@@ -848,17 +850,31 @@ async function refreshProviders() {
       providerStatus.textContent = data.error || ('HTTP ' + response.status);
       return;
     }
+    providerState = data;
     providerSelect.innerHTML = '';
+    const labels = {};
     for (const provider of data.providers || []) {
+      labels[provider.id] = provider.label;
       const option = document.createElement('option');
       option.value = provider.id;
-      option.textContent = provider.label + ' · ' + (provider.key_present || provider.id === 'local' ? 'key ready' : 'key missing');
+      const key = provider.id === 'local' ? 'local' : (provider.key_present ? 'key ready' : 'key missing');
+      option.textContent = provider.label + ' · ' + key;
       providerSelect.appendChild(option);
     }
     providerSelect.value = data.active || 'local';
-    const current = data.current_remote ? data.current_model : 'local llama.cpp';
-    providerStatus.textContent = 'Saved: ' + (providerSelect.options[providerSelect.selectedIndex]?.textContent || 'local') + '\nRunning: ' + current;
-    providerHint.textContent = 'API keys: DEEPSEEK_API_KEY / MOONSHOT_API_KEY, or ' + (data.secrets_path || 'secrets.env') + ' with chmod 600. Changing provider requires an app restart.';
+    const activeLabel = labels[data.current_provider] || data.current_provider || 'unknown';
+    const savedLabel = labels[data.active] || data.active || 'unknown';
+    const activeModel = data.current_remote
+      ? data.current_model + ' (' + activeLabel + ')'
+      : (data.current_model || 'local llama.cpp') + ' (Local llama.cpp)';
+    let text = 'ACTIVE FOR NEW CHATS\n' + activeModel + '\n\nSAVED CHOICE\n' + savedLabel;
+    providerStatus.className = 'provider-status';
+    if (data.restart_required) {
+      text += '\n\nRestart Local Harness to apply the saved choice.';
+      providerStatus.className = 'provider-status provider-warning';
+    }
+    providerStatus.textContent = text;
+    providerHint.textContent = 'Keys: DEEPSEEK_API_KEY / MOONSHOT_API_KEY, or ' + (data.secrets_path || 'secrets.env') + ' with chmod 600.';
   } catch (error) {
     providerStatus.textContent = String(error);
   }
@@ -915,9 +931,15 @@ async function refreshLocalModels() {
 
 function renderLocalModels(data) {
   const selected = data.selected || {};
-  const active = data.active || '';
+  const remote = Boolean(providerState && providerState.current_remote);
+  const active = remote ? '' : (data.active || '');
   const healthy = data.healthy ? 'healthy' : 'not healthy';
-  modelStatus.textContent = 'Active: ' + (active || 'unknown') + ' · ' + healthy;
+  const providerLabel = providerState
+    ? ((providerState.providers || []).find((provider) => provider.id === providerState.current_provider) || {}).label
+    : '';
+  modelStatus.textContent = remote
+    ? 'Chats use ' + data.chat_model + ' via ' + (providerLabel || 'remote API') + '.\nLocal llama-server is ' + healthy + '; these models are NOT active for chats.'
+    : 'Chats use Local llama.cpp · ' + (active || 'no active model') + ' · ' + healthy;
   modelList.innerHTML = '';
   const models = data.models || [];
   if (!models.length) {
@@ -969,9 +991,15 @@ function renderLocalModels(data) {
     actions.className = 'model-actions';
     const use = document.createElement('button');
     use.type = 'button';
-    use.textContent = model.path === selected.path ? 'Selected' : 'Switch to this model';
-    use.disabled = model.path === selected.path;
-    use.addEventListener('click', () => switchModel(model));
+    if (remote) {
+      use.textContent = 'Not active (remote provider)';
+      use.disabled = true;
+      use.title = 'Select Local provider and restart to use local models.';
+    } else {
+      use.textContent = model.path === selected.path ? 'Selected' : 'Switch to this model';
+      use.disabled = model.path === selected.path;
+      use.addEventListener('click', () => switchModel(model));
+    }
     actions.appendChild(use);
     item.append(name, meta, badges, tags, actions);
     modelList.appendChild(item);
@@ -1490,8 +1518,7 @@ modelToggle.addEventListener('click', () => {
   modelPanel.hidden = !modelPanel.hidden;
   if (!modelPanel.hidden) {
     mcpPanel.hidden = true;
-    refreshProviders();
-    refreshLocalModels();
+    refreshProviders().then(() => refreshLocalModels());
     refreshModelDownload();
   } else {
     stopModelDownloadTimer();
