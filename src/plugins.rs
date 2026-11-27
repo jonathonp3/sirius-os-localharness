@@ -657,12 +657,20 @@ fn merge_mcp_config(bundle: &McpBundle) -> Result<PathBuf> {
         .and_then(serde_json::Value::as_array_mut)
         .context("mcp.json has no servers array")?;
     servers.retain(|server| server.get("name").and_then(serde_json::Value::as_str) != Some(&bundle.name));
+    let home = std::env::var("HOME").context("HOME is not set")?;
+    let expand = |value: &str| value.replace("%h", &home);
+    let args: Vec<String> = bundle.args.iter().map(|arg| expand(arg)).collect();
+    let env: std::collections::HashMap<String, String> = bundle
+        .env
+        .iter()
+        .map(|(key, value)| (key.clone(), expand(value)))
+        .collect();
     servers.push(serde_json::json!({
         "name": bundle.name,
-        "command": bundle.command,
-        "args": bundle.args,
-        "env": bundle.env,
-        "url": bundle.url,
+        "command": expand(&bundle.command),
+        "args": args,
+        "env": env,
+        "url": bundle.url.as_deref().map(expand),
     }));
     std::fs::write(&path, serde_json::to_string_pretty(&root)? + "\n")?;
     Ok(path)

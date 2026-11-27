@@ -5,10 +5,15 @@
   "api": "1",
   "min_harness": "0.1.0",
   "description": "PhotoCraft MCP bundle with design validation skill",
-  "skills": ["skills/photocraft-design/SKILL.md"],
+  "skills": [
+    "skills/photocraft-design/SKILL.md"
+  ],
   "mcp": {
     "name": "photocraft",
     "command": "/usr/bin/flatpak-spawn",
-    "args": ["--host", "/var/home/jonathon/.local/bin/photocraft-design-mcp"]
+    "args": [
+      "--host",
+      "%h/.local/bin/photocraft-design-mcp"
+    ]
   }
 }

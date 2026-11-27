@@ -25,7 +25,7 @@
       "versions": {
         "1.0.0": {
           "url": "https://github.com/jonathonp3/sirius-os-localharness/releases/download/plugin-photocraft-v1.0.0/photocraft-1.0.0.tar.gz",
-          "sha256": "dfa4adc90ac607a287de006695d526f992cbde6533a6493ea02f947419c85a61",
+          "sha256": "41f0031f05f80fab09f7637ae7fcb1499568ef46dffa81dea918f54503bff30d",
           "api": "1"
         }
       }
