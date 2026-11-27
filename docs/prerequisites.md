@@ -190,10 +190,18 @@ The Flatpak and the host helper scripts are separate. Install the Flatpak for th
 
 ### Option A: Flatpak + helper scripts from a release tarball (recommended)
 
-Install the Flatpak first:
+Install the Flatpak repository and key first:
 
 ```bash
+wget2 -q -O /tmp/sirius-os-localharness.gpg \
+  https://raw.githubusercontent.com/jonathonp3/sirius-os-localharness/main/packaging/flatpak/local-harness.gpg
+
+flatpak remote-add --system --if-not-exists \
+  --gpg-import=/tmp/sirius-os-localharness.gpg \
+  local-harness https://jonathonp3.github.io/sirius-os-localharness/local-harness.flatpakrepo
+
 flatpak install --system local-harness org.jonathonp3.LocalHarness
+flatpak run org.jonathonp3.LocalHarness
 ```
 
 Download the release tarball, extract it, and install only the helpers:
