@@ -188,7 +188,7 @@ systemctl --user restart llama-server
 
 The Flatpak and the host helper scripts are separate. Install the Flatpak for the UI, then get the helper scripts from the release tarball or a source checkout.
 
-### Option A: Flatpak + helper scripts from a release tarball (recommended)
+### Option A: Flatpak + helper scripts from source (recommended)
 
 Install the Flatpak repository and key first:
 
@@ -204,16 +204,25 @@ flatpak install --system local-harness org.jonathonp3.LocalHarness
 flatpak run org.jonathonp3.LocalHarness
 ```
 
-Download the release tarball, extract it, and install only the helpers:
+Download the repository source archive. It contains the helper scripts:
 
 ```bash
-tar -xzf local-harness-<version>.tar.gz
-cd local-harness-<version>
+curl -L -o /tmp/local-harness.tar.gz \
+  https://github.com/jonathonp3/sirius-os-localharness/archive/refs/heads/main.tar.gz
 
-install -Dm755 local-harness-llama-start \
+tar -xzf /tmp/local-harness.tar.gz
+cd sirius-os-localharness-main
+
+install -Dm755 packaging/local-harness-llama-start \
   ~/.local/bin/local-harness-llama-start
-install -Dm755 local-harness-modelctl \
+install -Dm755 packaging/local-harness-modelctl \
   ~/.local/bin/local-harness-modelctl
+```
+
+For a pinned release, use its tag instead of `main`:
+
+```text
+https://github.com/jonathonp3/sirius-os-localharness/archive/refs/tags/<tag>.tar.gz
 ```
 
 Do **not** run `install.sh` for a Flatpak-only setup. It installs the source-mode `local-harness.service` and desktop entries, which are not needed when the Flatpak host service is used.
@@ -223,10 +232,15 @@ Do **not** run `install.sh` for a Flatpak-only setup. It installs the source-mod
 If you are not using the Flatpak:
 
 ```bash
-tar -xzf local-harness-<version>.tar.gz
-cd local-harness-<version>
-./install.sh
+curl -L -o /tmp/local-harness.tar.gz \
+  https://github.com/jonathonp3/sirius-os-localharness/archive/refs/heads/main.tar.gz
+
+tar -xzf /tmp/local-harness.tar.gz
+cd sirius-os-localharness-main
+./packaging/install.sh
 ```
+
+`packaging/install.sh` expects a built `bin/harness`; build it first with `./scripts/build-vm.sh` on a host without a C linker.
 
 This installs:
 

@@ -61,11 +61,22 @@ The script tars the source to the VM, runs `cargo build --release`, and copies `
 
 ## Tarball install
 
+Build a local package:
+
 ```bash
 ./scripts/package.sh
 tar -xzf dist/local-harness-<version>.tar.gz
 cd local-harness-<version>
 ./install.sh
+```
+
+To obtain the helper scripts without a package asset, download the source tree:
+
+```bash
+curl -L -o /tmp/local-harness.tar.gz \
+  https://github.com/jonathonp3/sirius-os-localharness/archive/refs/heads/main.tar.gz
+tar -xzf /tmp/local-harness.tar.gz
+cd sirius-os-localharness-main
 ```
 
 The installer places the binary in `~/.local/bin`, a desktop entry in `~/.local/share/applications`, and a user unit in `~/.config/systemd/user`. No root or rpm-ostree layering is required.
