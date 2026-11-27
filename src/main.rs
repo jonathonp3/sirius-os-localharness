@@ -192,6 +192,12 @@ enum PluginAction {
     List,
     /// Install a plugin package directory into the local registry.
     Install { path: PathBuf },
+    /// Install a plugin tarball from an HTTPS URL.
+    InstallUrl { url: String },
+    /// Install a named plugin from the catalog.
+    InstallCatalog { name: String, version: Option<String>, catalog: Option<String> },
+    /// Print the plugin catalog.
+    Catalog { url: Option<String> },
     /// Install a new version, preserving the current one for rollback.
     Update { path: PathBuf },
     /// Restore the previous version of a plugin.
@@ -527,6 +533,18 @@ async fn main() -> Result<()> {
                 PluginAction::Install { path } => {
                     let entry = plugins::install(&path)?;
                     println!("installed {} {} r{}", entry.name, entry.version, entry.revision);
+                }
+                PluginAction::InstallUrl { url } => {
+                    let entry = plugins::install_url(&url).await?;
+                    println!("installed {} {} r{}", entry.name, entry.version, entry.revision);
+                }
+                PluginAction::InstallCatalog { name, version, catalog } => {
+                    let entry = plugins::install_from_catalog(&name, version.as_deref(), catalog.as_deref()).await?;
+                    println!("installed {} {} r{} from catalog", entry.name, entry.version, entry.revision);
+                }
+                PluginAction::Catalog { url } => {
+                    let value = plugins::catalog(url.as_deref()).await?;
+                    println!("{}", serde_json::to_string_pretty(&value)?);
                 }
                 PluginAction::Update { path } => {
                     let entry = plugins::install(&path)?;

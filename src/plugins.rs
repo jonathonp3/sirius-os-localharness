@@ -118,6 +118,20 @@ struct PackageFile {
     permissions: Permissions,
     #[serde(default)]
     skills: Vec<String>,
+    #[serde(default)]
+    mcp: Option<McpBundle>,
+}
+
+#[derive(Debug, Deserialize)]
+struct McpBundle {
+    name: String,
+    command: String,
+    #[serde(default)]
+    args: Vec<String>,
+    #[serde(default)]
+    env: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    url: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -212,7 +226,7 @@ pub fn load(path: &Path) -> Result<Vec<Plugin>> {
             let text = String::from_utf8(bytes).context("plugin.json is not UTF-8")?;
             let value: serde_json::Value = serde_json::from_str(&text)
                 .with_context(|| format!("parsing {}", direct.display()))?;
-            if value.get("tools").is_some() {
+            if value.get("tools").is_some() || value.get("mcp").is_some() {
                 return load_package_file(&direct, path);
             }
             let mut plugin: Plugin = serde_json::from_value(value)
@@ -323,7 +337,7 @@ fn load_packages(root: &Path) -> Result<Vec<Plugin>> {
         let text = String::from_utf8(read_signed(&plugin_path)?).context("plugin.json is not UTF-8")?;
         let value: serde_json::Value = serde_json::from_str(&text)
             .with_context(|| format!("parsing {}", plugin_path.display()))?;
-        if value.get("tools").is_some() {
+        if value.get("tools").is_some() || value.get("mcp").is_some() {
             let package_dir = plugin_path.parent().context("plugin directory")?;
             plugins.extend(load_package_file(&plugin_path, package_dir)?);
             continue;
@@ -506,6 +520,76 @@ fn copy_dir(source: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
+async fn download_plugin(url: &str) -> Result<Vec<u8>> {
+    if !url.starts_with("https://") {
+        bail!("plugin URL must use https");
+    }
+    let response = reqwest::get(url).await.context("downloading plugin")?;
+    if !response.status().is_success() {
+        bail!("downloading plugin: HTTP {}", response.status());
+    }
+    if response.content_length().unwrap_or(0) > 50 * 1024 * 1024 {
+        bail!("plugin archive is too large");
+    }
+    let bytes = response.bytes().await.context("reading plugin archive")?;
+    if bytes.len() > 50 * 1024 * 1024 {
+        bail!("plugin archive is too large");
+    }
+    Ok(bytes.to_vec())
+}
+
+fn install_archive_bytes(bytes: &[u8]) -> Result<Installed> {
+    let temp = std::env::temp_dir().join(format!("local-harness-download-{}.tar.gz", std::process::id()));
+    std::fs::write(&temp, bytes).with_context(|| format!("writing {}", temp.display()))?;
+    let result = install_archive(&temp);
+    let _ = std::fs::remove_file(&temp);
+    result
+}
+
+pub async fn install_url(url: &str) -> Result<Installed> {
+    install_archive_bytes(&download_plugin(url).await?)
+}
+
+pub const CATALOG_URL: &str = "https://raw.githubusercontent.com/jonathonp3/sirius-os-localharness/main/plugins.json";
+
+pub async fn catalog(url: Option<&str>) -> Result<serde_json::Value> {
+    let url = url.unwrap_or(CATALOG_URL);
+    let response = reqwest::get(url).await.context("downloading plugin catalog")?;
+    if !response.status().is_success() {
+        bail!("catalog: HTTP {}", response.status());
+    }
+    let value: serde_json::Value = response.json().await.context("parsing plugin catalog")?;
+    Ok(value)
+}
+
+pub async fn install_from_catalog(name: &str, version: Option<&str>, url: Option<&str>) -> Result<Installed> {
+    let catalog = catalog(url).await?;
+    let entry = catalog
+        .get("plugins")
+        .and_then(|plugins| plugins.get(name))
+        .with_context(|| format!("plugin `{name}` is not in the catalog"))?;
+    let version = version
+        .map(ToString::to_string)
+        .or_else(|| entry.get("latest").and_then(serde_json::Value::as_str).map(ToString::to_string))
+        .context("catalog entry has no latest version")?;
+    let package = entry
+        .get("versions")
+        .and_then(|versions| versions.get(&version))
+        .with_context(|| format!("plugin `{name}` has no version `{version}`"))?;
+    let archive = package
+        .get("url")
+        .and_then(serde_json::Value::as_str)
+        .context("catalog entry has no archive URL")?;
+    let bytes = download_plugin(archive).await?;
+    if let Some(expected) = package.get("sha256").and_then(serde_json::Value::as_str) {
+        let actual = sha256_hex(&bytes);
+        if !expected.eq_ignore_ascii_case(&actual) {
+            bail!("catalog SHA-256 mismatch for `{name}`");
+        }
+    }
+    install_archive_bytes(&bytes)
+}
+
 pub fn install(source: &Path) -> Result<Installed> {
     if source.is_file() {
         return install_archive(source);
@@ -518,40 +602,109 @@ fn skills_config_dir() -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".config/local-harness/skills"))
 }
 
-fn install_skills(package_dir: &Path, plugins: &[Plugin]) -> Result<Vec<String>> {
+fn install_skill_files(package_dir: &Path, skills: &[String], fallback_name: &str) -> Result<Vec<String>> {
     let mut installed = Vec::new();
-    for plugin in plugins {
-        for relative in &plugin.skills {
-            let relative = Path::new(relative);
-            if relative.is_absolute() || relative.components().any(|part| matches!(part, std::path::Component::ParentDir)) {
-                bail!("invalid skill path `{}`", relative.display());
-            }
-            let source = package_dir.join(relative);
-            if !source.is_file() {
-                bail!("skill file `{}` is missing", source.display());
-            }
-            let source = source.canonicalize().with_context(|| format!("resolving {}", source.display()))?;
-            if !source.starts_with(package_dir) {
-                bail!("skill path escapes package: {}", source.display());
-            }
-            let parent = relative.parent().filter(|parent| !parent.as_os_str().is_empty());
-            let name = parent
-                .and_then(|parent| parent.file_name())
-                .and_then(|name| name.to_str())
-                .filter(|name| *name != "skills")
-                .unwrap_or(&plugin.name)
-                .to_string();
-            let destination = skills_config_dir()?.join(&name);
-            std::fs::create_dir_all(&destination)?;
-            std::fs::copy(&source, destination.join("SKILL.md"))?;
-            installed.push(name);
+    for relative in skills {
+        let relative = Path::new(relative);
+        if relative.is_absolute() || relative.components().any(|part| matches!(part, std::path::Component::ParentDir)) {
+            bail!("invalid skill path `{}`", relative.display());
         }
+        let source = package_dir.join(relative);
+        if !source.is_file() {
+            bail!("skill file `{}` is missing", source.display());
+        }
+        let source = source.canonicalize().with_context(|| format!("resolving {}", source.display()))?;
+        if !source.starts_with(package_dir) {
+            bail!("skill path escapes package: {}", source.display());
+        }
+        let parent = relative.parent().filter(|parent| !parent.as_os_str().is_empty());
+        let name = parent
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            .filter(|name| *name != "skills")
+            .unwrap_or(fallback_name)
+            .to_string();
+        let destination = skills_config_dir()?.join(&name);
+        std::fs::create_dir_all(&destination)?;
+        std::fs::copy(&source, destination.join("SKILL.md"))?;
+        installed.push(name);
     }
     Ok(installed)
 }
 
+fn install_skills(package_dir: &Path, plugins: &[Plugin]) -> Result<Vec<String>> {
+    let mut installed = Vec::new();
+    for plugin in plugins {
+        installed.extend(install_skill_files(package_dir, &plugin.skills, &plugin.name)?);
+    }
+    Ok(installed)
+}
+
+fn merge_mcp_config(bundle: &McpBundle) -> Result<PathBuf> {
+    let home = std::env::var_os("HOME").context("HOME is not set")?;
+    let path = PathBuf::from(home).join(".harness/mcp.json");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut root: serde_json::Value = if path.exists() {
+        serde_json::from_str(&std::fs::read_to_string(&path)?)
+            .with_context(|| format!("parsing {}", path.display()))?
+    } else {
+        serde_json::json!({ "servers": [] })
+    };
+    let servers = root
+        .get_mut("servers")
+        .and_then(serde_json::Value::as_array_mut)
+        .context("mcp.json has no servers array")?;
+    servers.retain(|server| server.get("name").and_then(serde_json::Value::as_str) != Some(&bundle.name));
+    servers.push(serde_json::json!({
+        "name": bundle.name,
+        "command": bundle.command,
+        "args": bundle.args,
+        "env": bundle.env,
+        "url": bundle.url,
+    }));
+    std::fs::write(&path, serde_json::to_string_pretty(&root)? + "\n")?;
+    Ok(path)
+}
+
+fn install_mcp_bundle(source: &Path) -> Result<Installed> {
+    let direct = source.join("plugin.json");
+    let text = std::fs::read_to_string(&direct)
+        .with_context(|| format!("reading {}", direct.display()))?;
+    let package: PackageFile = serde_json::from_str(&text)
+        .with_context(|| format!("parsing {}", direct.display()))?;
+    let bundle = package.mcp.context("plugin has no mcp bundle")?;
+    let destination = registry_dir().join(&package.name);
+    if destination.exists() {
+        std::fs::remove_dir_all(&destination)?;
+    }
+    copy_dir(source, &destination)?;
+    install_skill_files(&destination, &package.skills, &package.name)?;
+    merge_mcp_config(&bundle)?;
+    let mut registry = load_registry()?;
+    registry.plugins.retain(|entry| entry.name != package.name);
+    let entry = Installed {
+        name: package.name.clone(),
+        version: package.version,
+        revision: package.revision,
+        api: package.api,
+        min_harness: package.min_harness,
+        enabled: true,
+        path: package.name,
+        tools: Vec::new(),
+        previous: None,
+    };
+    registry.plugins.push(entry.clone());
+    save_registry(&registry)?;
+    Ok(entry)
+}
+
 fn install_from_dir(source: &Path) -> Result<Installed> {
     let loaded = load(source)?;
+    if loaded.is_empty() {
+        return install_mcp_bundle(source);
+    }
     let Some(first) = loaded.first() else {
         bail!("empty plugin package");
     };
