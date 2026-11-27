@@ -16,16 +16,19 @@ systemd user
 On Fedora Silverblue:
 
 ```bash
-sudo rpm-ostree install distrobox podman
+sudo rpm-ostree install distrobox podman fuse fuse-libs
 ```
 
 If those are already present, skip the layering. `distrobox` and `podman` are also available from Flathub or a toolbox image.
+
+`fuse` and `fuse-libs` are not required by llama.cpp itself. They matter for local Flatpak/container build tooling, especially `flatpak-builder` and FUSE-backed filesystems. CI builds pass `--disable-rofiles-fuse`, so it does not need a working FUSE mount inside the runner.
 
 Verify:
 
 ```bash
 distrobox --version
 podman --version
+fusermount --version || fusermount3 --version
 ```
 
 ## 2. Create the llama container
@@ -53,7 +56,7 @@ sudo dnf install -y \
   openssl-devel python3
 ```
 
-Package names vary by Fedora release. `vulkaninfo` and `glslc` are the important checks:
+Package names vary by Fedora release. `vulkaninfo` and `glslc` are the important build checks. FUSE is a host-side packaging dependency, not a container build dependency:
 
 ```bash
 vulkaninfo --summary
