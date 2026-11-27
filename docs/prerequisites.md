@@ -16,10 +16,12 @@ systemd user
 On Fedora Silverblue:
 
 ```bash
-sudo rpm-ostree install distrobox podman
+sudo rpm-ostree install distrobox
 ```
 
-If those are already present, skip the layering. `distrobox` and `podman` are also available from Flathub or a toolbox image.
+`podman` is installed by default on Fedora Silverblue and Fedora Workstation. Do not layer it again. `distrobox` is not part of the default image on Silverblue, so it normally needs installing.
+
+Verify both:
 
 Optional host package:
 
@@ -47,13 +49,13 @@ llama.cpp:  CPU build succeeded
 
 The build produced a working `llama-server`; FUSE was not required.
 
-Verify:
-
 ```bash
 distrobox --version
 podman --version
 fusermount --version || fusermount3 --version
 ```
+
+If `podman` is missing on a minimal or custom image, install it with `rpm-ostree` or use the Distrobox/Toolbox image that provides it.
 
 ## 2. Create the llama container
 
