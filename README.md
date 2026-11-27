@@ -107,6 +107,7 @@ Details, prerequisites, and the validation workflow:
 | Topic | Document |
 |---|---|
 | Installation and builds | [docs/install.md](docs/install.md) |
+| Host, distrobox, and systemd | [docs/prerequisites.md](docs/prerequisites.md) |
 | Models, downloads, mmproj | [docs/models.md](docs/models.md) |
 | Local and remote providers | [docs/providers.md](docs/providers.md) |
 | Plugins, catalog, releases | [docs/plugins.md](docs/plugins.md) |

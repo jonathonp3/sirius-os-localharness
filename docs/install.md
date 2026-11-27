@@ -32,6 +32,16 @@ local-harness-window --browser
 local-harness-window --self-test
 ```
 
+## Host prerequisites
+
+llama.cpp is a separate host service. See [prerequisites.md](prerequisites.md) for:
+
+- distrobox/podman setup
+- Vulkan build dependencies
+- helper wrappers
+- selected-model and mmproj files
+- `llama-server` and `local-harness-flatpak` systemd units
+
 ## Source build
 
 On a machine with Rust and a C linker:
