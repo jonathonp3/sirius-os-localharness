@@ -9,7 +9,10 @@
       "quant": "IQ4_XS",
       "size_bytes": 16378076320,
       "license": "Apache-2.0",
-      "capabilities": ["text", "tools"],
+      "capabilities": [
+        "text",
+        "tools"
+      ],
       "vram_gb": 8,
       "note": "Current local agent model. Strong tool calling; large for 8 GB, so expect partial offload."
     },
@@ -22,7 +25,10 @@
       "quant": "Q4_K_M",
       "size_bytes": 5780250880,
       "license": "Apache-2.0",
-      "capabilities": ["text", "tools"],
+      "capabilities": [
+        "text",
+        "tools"
+      ],
       "vram_gb": 8,
       "note": "Faster local fallback with tool support; lower quality than the 30B model."
     },
@@ -35,11 +41,15 @@
       "quant": "Q4_K_M + mmproj",
       "size_bytes": 1500000000,
       "license": "LFM Open License 1.0",
-      "capabilities": ["text", "audio", "image"],
+      "capabilities": [
+        "text",
+        "audio",
+        "image"
+      ],
       "vram_gb": 4,
       "mmproj": "mmproj-LFM3-Omni-2B-Q8_0.gguf",
-      "installable": false,
-      "note": "Multimodal any-to-any model. Requires the mmproj companion and llama-server multimodal support, which this installer does not have yet."
+      "installable": true,
+      "note": "Downloads the Q4_K_M model and its mmproj companion. Requires a llama-server build with LFM 3 Omni multimodal support."
     }
   ]
 }

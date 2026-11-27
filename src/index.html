@@ -970,7 +970,7 @@ async function installCurated(entry) {
     const response = await fetch('/api/model-catalog/install?token=' + encodeURIComponent(token), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repo: entry.repo, file: entry.file }),
+      body: JSON.stringify({ repo: entry.repo, file: entry.file, mmproj: entry.mmproj || null }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

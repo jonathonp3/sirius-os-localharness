@@ -478,6 +478,8 @@ struct CatalogQuery {
 struct CatalogInstallBody {
     repo: String,
     file: String,
+    #[serde(default)]
+    mmproj: Option<String>,
 }
 
 fn catalog_response(result: Result<String>) -> Response {
