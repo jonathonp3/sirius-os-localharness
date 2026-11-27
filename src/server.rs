@@ -23,6 +23,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use crate::agent::{self, EventSink};
 use crate::approval::{self, ApprovalRequest, Approver};
 use crate::session::{self, Session};
+use crate::providers;
 use crate::workspaces;
 
 const INDEX: &str = include_str!("index.html");
@@ -82,6 +83,8 @@ pub async fn run(
         .route("/assets/{file}", get(asset))
         .route("/api/health", get(health))
         .route("/api/models", get(models))
+        .route("/api/providers", get(providers_status))
+        .route("/api/providers/select", post(select_provider))
         .route("/api/local-models", get(local_models))
         .route("/api/local-models/tags", post(set_local_model_tags))
         .route("/api/local-models/select", post(select_local_model))
@@ -265,6 +268,72 @@ fn write_model_tags(state: &AppState, tags: &HashMap<String, Vec<String>>) -> Re
     std::fs::write(&temp, serde_json::to_vec_pretty(tags)?)?;
     std::fs::rename(temp, path)?;
     Ok(())
+}
+
+async fn providers_status(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let active = providers::active().unwrap_or_else(|_| "local".to_string());
+    let list: Vec<Value> = providers::PROVIDERS
+        .iter()
+        .map(|provider| {
+            json!({
+                "id": provider.id,
+                "label": provider.label,
+                "model": provider.model,
+                "endpoint": provider.endpoint,
+                "key_env": provider.key_env,
+                "key_present": provider.id == "local" || providers::key_present(provider),
+            })
+        })
+        .collect();
+    Json(json!({
+        "active": active,
+        "current_model": state.config.model,
+        "current_endpoint": state.config.endpoint,
+        "current_remote": state.config.remote,
+        "providers": list,
+        "secrets_path": providers::secrets_path().map(|path| path.to_string_lossy().to_string()).unwrap_or_default(),
+    }))
+    .into_response()
+}
+
+#[derive(Deserialize)]
+struct ProviderSelectBody {
+    id: String,
+}
+
+async fn select_provider(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<ProviderSelectBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let active = state
+        .active_sessions
+        .lock()
+        .map(|active| !active.is_empty())
+        .unwrap_or(true);
+    if active {
+        return (StatusCode::CONFLICT, Json(json!({ "error": "a chat is running; stop it before switching providers" }))).into_response();
+    }
+    match providers::select(&body.id) {
+        Ok(()) => Json(json!({
+            "active": body.id,
+            "restart_required": true,
+            "message": "Provider saved. Restart Local Harness to apply it.",
+        }))
+        .into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
 }
 
 async fn local_models(

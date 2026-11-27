@@ -143,6 +143,10 @@ body.sidebar-open { padding-left:350px; }
 .model-empty { color:var(--muted); font-size:13px; padding:8px 2px; }
 
 
+.provider-section { border-bottom:1px solid var(--border); margin-bottom:10px; padding-bottom:10px; }
+.provider-status { color:var(--muted); font-size:13px; margin:5px 0; white-space:pre-wrap; }
+.provider-hint { color:var(--muted); font-size:12px; line-height:1.4; }
+#provider-select { flex:1; min-width:0; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:5px 7px; font-size:13px; }
 .model-install { border-top:1px solid var(--border); margin-top:10px; padding-top:10px; }
 .model-install-title { font-size:14px; font-weight:600; margin-bottom:7px; }
 .model-row { display:flex; gap:5px; margin-bottom:6px; }
@@ -311,6 +315,18 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
       <progress id="model-progress" max="100" value="0"></progress>
       <button id="model-cancel" type="button">Cancel download</button>
     </div>
+  <div class="provider-section">
+    <div class="model-install-title">Provider</div>
+    <div class="model-row">
+      <select id="provider-select" aria-label="Model provider">
+        <option value="local">Local llama.cpp</option>
+        <option value="deepseek">DeepSeek API</option>
+        <option value="kimi">Kimi API</option>
+      </select>
+    </div>
+    <div id="provider-status" class="provider-status">Loading provider…</div>
+    <div id="provider-hint" class="provider-hint"></div>
+  </div>
   <div id="model-list"></div>
   <div class="model-install">
     <div class="model-install-title">Install from Hugging Face</div>
@@ -367,6 +383,9 @@ const modelPanel = document.getElementById('model-panel');
 const modelClose = document.getElementById('model-close');
 const modelStatus = document.getElementById('model-status');
 const modelList = document.getElementById('model-list');
+const providerSelect = document.getElementById('provider-select');
+const providerStatus = document.getElementById('provider-status');
+const providerHint = document.getElementById('provider-hint');
 const modelSearch = document.getElementById('model-search');
 const modelSearchButton = document.getElementById('model-search-btn');
 const modelSearchResults = document.getElementById('model-search-results');
@@ -819,6 +838,62 @@ async function cancelModelDownload() {
     modelInstallStatus.textContent = String(error);
   }
 }
+
+async function refreshProviders() {
+  if (!token) return;
+  try {
+    const response = await fetch('/api/providers?token=' + encodeURIComponent(token));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      providerStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    providerSelect.innerHTML = '';
+    for (const provider of data.providers || []) {
+      const option = document.createElement('option');
+      option.value = provider.id;
+      option.textContent = provider.label + ' · ' + (provider.key_present || provider.id === 'local' ? 'key ready' : 'key missing');
+      providerSelect.appendChild(option);
+    }
+    providerSelect.value = data.active || 'local';
+    const current = data.current_remote ? data.current_model : 'local llama.cpp';
+    providerStatus.textContent = 'Saved: ' + (providerSelect.options[providerSelect.selectedIndex]?.textContent || 'local') + '\nRunning: ' + current;
+    providerHint.textContent = 'API keys: DEEPSEEK_API_KEY / MOONSHOT_API_KEY, or ' + (data.secrets_path || 'secrets.env') + ' with chmod 600. Changing provider requires an app restart.';
+  } catch (error) {
+    providerStatus.textContent = String(error);
+  }
+}
+
+async function selectProvider() {
+  const label = providerSelect.options[providerSelect.selectedIndex]?.textContent || providerSelect.value;
+  if (!confirm('Save provider "' + label + '"?\n\nLocal Harness must be restarted to apply it.')) {
+    await refreshProviders();
+    return;
+  }
+  providerSelect.disabled = true;
+  try {
+    const response = await fetch('/api/providers/select?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: providerSelect.value }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      providerStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    providerStatus.textContent = data.message || 'Provider saved. Restart to apply.';
+    add('meta', 'provider saved: ' + label + ' · restart Local Harness to apply');
+  } catch (error) {
+    providerStatus.textContent = String(error);
+  } finally {
+    providerSelect.disabled = false;
+    await refreshProviders();
+    providerSelect.value = providerSelect.value;
+  }
+}
+
+providerSelect.addEventListener('change', selectProvider);
 
 async function refreshLocalModels() {
   if (!token) return;
@@ -1415,6 +1490,7 @@ modelToggle.addEventListener('click', () => {
   modelPanel.hidden = !modelPanel.hidden;
   if (!modelPanel.hidden) {
     mcpPanel.hidden = true;
+    refreshProviders();
     refreshLocalModels();
     refreshModelDownload();
   } else {

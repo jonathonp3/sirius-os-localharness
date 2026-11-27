@@ -6,6 +6,7 @@ mod governor;
 mod llm;
 mod mcp;
 mod plugins;
+mod providers;
 mod registry;
 mod server;
 mod session;
@@ -275,7 +276,34 @@ async fn main() -> Result<()> {
         .unwrap_or(false)
         || api_key_env.is_some()
         || (!endpoint.contains("127.0.0.1") && !endpoint.contains("localhost"));
-    let profile_label = profile_name.clone().unwrap_or_else(|| "none".to_string());
+    let selected_provider = if cli.profile.is_some() {
+        "local".to_string()
+    } else {
+        providers::active()?
+    };
+    let selected_spec = providers::spec(&selected_provider).filter(|provider| provider.id != "local");
+    let endpoint = match (&selected_spec, cli.endpoint.is_none()) {
+        (Some(provider), true) => provider.endpoint.to_string(),
+        _ => endpoint,
+    };
+    let model = match (&selected_spec, cli.model.is_none()) {
+        (Some(provider), true) => provider.model.to_string(),
+        _ => model,
+    };
+    let context_limit = match (&selected_spec, cli.context_limit.is_none()) {
+        (Some(provider), true) => provider.context_limit,
+        _ => context_limit,
+    };
+    let api_key = match &selected_spec {
+        Some(provider) => providers::api_key(provider)?,
+        None => api_key,
+    };
+    let provider_max_tokens = selected_spec.map(|provider| provider.max_tokens);
+    let remote = remote || selected_spec.is_some();
+    let profile_label = selected_spec
+        .map(|provider| provider.label.to_string())
+        .unwrap_or_else(|| profile_name.clone().unwrap_or_else(|| "none".to_string()));
+
     let base_policy = match &cli.tool_policy {
         Some(name) => tools::ToolPolicy::parse(name).with_context(|| {
             format!("invalid tool policy `{name}` (use read-only, write, or full)")
@@ -336,7 +364,7 @@ async fn main() -> Result<()> {
         Command::Run { prompt, resume, fork, max_steps, max_tokens, allow_write, allow_shell, think, max_depth, max_children } => {
             let max_tokens = max_tokens
                 .or_else(|| profile.as_ref().and_then(|profile| profile.max_tokens))
-                .unwrap_or(512);
+                .unwrap_or_else(|| provider_max_tokens.unwrap_or(512));
             let think = think || profile.as_ref().and_then(|profile| profile.think).unwrap_or(false);
             let policy = if allow_shell {
                 tools::ToolPolicy::Full
@@ -400,7 +428,7 @@ async fn main() -> Result<()> {
         Command::Serve { port, token, open, concurrency, max_steps, max_tokens, allow_write, allow_shell, think, max_depth, max_children } => {
             let max_tokens = max_tokens
                 .or_else(|| profile.as_ref().and_then(|profile| profile.max_tokens))
-                .unwrap_or(512);
+                .unwrap_or_else(|| provider_max_tokens.unwrap_or(512));
             let think = think || profile.as_ref().and_then(|profile| profile.think).unwrap_or(false);
             let policy = if allow_shell {
                 tools::ToolPolicy::Full
@@ -440,7 +468,7 @@ async fn main() -> Result<()> {
         Command::Workflow { file, max_steps, max_tokens, allow_write, allow_shell, think, max_depth } => {
             let max_tokens = max_tokens
                 .or_else(|| profile.as_ref().and_then(|profile| profile.max_tokens))
-                .unwrap_or(512);
+                .unwrap_or_else(|| provider_max_tokens.unwrap_or(512));
             let think = think || profile.as_ref().and_then(|profile| profile.think).unwrap_or(false);
             let policy = if allow_shell {
                 tools::ToolPolicy::Full
@@ -605,7 +633,7 @@ async fn main() -> Result<()> {
             let max_tokens = profile
                 .as_ref()
                 .and_then(|profile| profile.max_tokens)
-                .unwrap_or(512);
+                .unwrap_or_else(|| provider_max_tokens.unwrap_or(512));
             doctor(
                 &endpoint,
                 &model,
