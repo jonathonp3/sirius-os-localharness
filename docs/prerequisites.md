@@ -13,13 +13,44 @@ systemd user
 
 ## 1. Host tools
 
-On Fedora Silverblue:
+`podman` is installed by default on Fedora Silverblue and Fedora Workstation. Do not layer it again.
+
+`distrobox` is not part of the default Silverblue image. There are two supported install paths.
+
+### User-local Distrobox (no layering)
+
+Install into `~/.local` without modifying the base image:
+
+```bash
+curl -s https://raw.githubusercontent.com/89luca89/distrobox/main/install \
+  | sh -s -- --prefix ~/.local
+```
+
+Ensure `~/.local/bin` is on `PATH`, then verify:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+distrobox --version
+```
+
+Uninstall:
+
+```bash
+curl -s https://raw.githubusercontent.com/89luca89/distrobox/main/uninstall \
+  | sh -s -- --prefix ~/.local
+```
+
+The install script is fetched from the upstream `main` branch. For a repeatable system, review the script or pin it to a release tag.
+
+### Layered Distrobox (BlueBuild/bootc)
+
+Layering is appropriate when building a custom bootc/BlueBuild image:
 
 ```bash
 sudo rpm-ostree install distrobox
 ```
 
-`podman` is installed by default on Fedora Silverblue and Fedora Workstation. Do not layer it again. `distrobox` is not part of the default image on Silverblue, so it normally needs installing.
+This is also the approach used on this workstation's BlueBuild image.
 
 Verify the tools:
 
