@@ -3,10 +3,14 @@
 ## Flatpak
 
 ```bash
-flatpak remote-add --if-not-exists local-harness \
-  https://jonathonp3.github.io/sirius-os-localharness/local-harness.flatpakrepo
+wget2 -q -O /tmp/sirius-os-localharness.gpg \
+  https://raw.githubusercontent.com/jonathonp3/sirius-os-localharness/main/packaging/flatpak/local-harness.gpg
 
-flatpak install local-harness org.jonathonp3.LocalHarness
+flatpak remote-add --system --if-not-exists \
+  --gpg-import=/tmp/sirius-os-localharness.gpg \
+  local-harness https://jonathonp3.github.io/sirius-os-localharness/local-harness.flatpakrepo
+
+flatpak install --system local-harness org.jonathonp3.LocalHarness
 flatpak run org.jonathonp3.LocalHarness
 ```
 

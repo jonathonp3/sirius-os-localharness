@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.jonathonp3.LocalHarness</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>Local Harness</name>
+  <summary>Local-first AI agent harness</summary>
+
+  <developer id="org.jonathonp3">
+    <name>Jonathon</name>
+  </developer>
+
+  <description>
+    <p>
+      Local Harness runs a local AI agent against llama.cpp or an
+      OpenAI-compatible provider.
+    </p>
+    <p>It provides:</p>
+    <ul>
+      <li>tool calling with explicit permissions and approvals</li>
+      <li>sessions, workspaces, resume, fork, and export</li>
+      <li>skills and versioned plugins</li>
+      <li>GGUF downloads with resume and mmproj support</li>
+      <li>MCP servers, including PhotoCraft design tools</li>
+    </ul>
+    <p>
+      The browser and native window UI work without external assets and
+      keep model data local unless a remote provider is selected.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">org.jonathonp3.LocalHarness.desktop</launchable>
+
+  <url type="homepage">https://github.com/jonathonp3/sirius-os-localharness</url>
+  <url type="bugtracker">https://github.com/jonathonp3/sirius-os-localharness/issues</url>
+  <url type="vcs-browser">https://github.com/jonathonp3/sirius-os-localharness</url>
+
+  <categories>
+    <category>Development</category>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>AI</keyword>
+    <keyword>agent</keyword>
+    <keyword>llama.cpp</keyword>
+    <keyword>local LLM</keyword>
+    <keyword>MCP</keyword>
+  </keywords>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2026-11-27"/>
+  </releases>
+</component>
