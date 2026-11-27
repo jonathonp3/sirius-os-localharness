@@ -101,6 +101,7 @@ pub async fn run(
         .route("/api/local-models", get(local_models))
         .route("/api/local-models/tags", post(set_local_model_tags))
         .route("/api/local-models/select", post(select_local_model))
+        .route("/api/model-catalog/curated", get(model_catalog_curated))
         .route("/api/model-catalog/search", get(model_catalog_search))
         .route("/api/model-catalog/files", get(model_catalog_files))
         .route("/api/model-catalog/install", post(model_catalog_install))
@@ -486,6 +487,20 @@ fn catalog_response(result: Result<String>) -> Response {
             Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("invalid model helper output: {error}") }))).into_response(),
         },
         Err(error) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    }
+}
+
+async fn model_catalog_curated(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    match serde_json::from_str::<Value>(include_str!("model-catalog.json")) {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("invalid curated catalog: {error}") }))).into_response(),
     }
 }
 

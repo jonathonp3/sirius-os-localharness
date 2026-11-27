@@ -329,6 +329,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
     <div id="provider-hint" class="provider-hint"></div>
   </div>
   <div id="model-list"></div>
+  <div id="model-curated"></div>
   <div class="model-install">
     <div class="model-install-title">Install from Hugging Face</div>
     <div class="model-row">
@@ -384,6 +385,7 @@ const modelPanel = document.getElementById('model-panel');
 const modelClose = document.getElementById('model-close');
 const modelStatus = document.getElementById('model-status');
 const modelList = document.getElementById('model-list');
+const modelCurated = document.getElementById('model-curated');
 const providerSelect = document.getElementById('provider-select');
 const providerStatus = document.getElementById('provider-status');
 const providerHint = document.getElementById('provider-hint');
@@ -910,6 +912,77 @@ async function selectProvider() {
 }
 
 providerSelect.addEventListener('change', selectProvider);
+
+async function refreshCuratedModels() {
+  if (!token) return;
+  try {
+    const response = await fetch('/api/model-catalog/curated?token=' + encodeURIComponent(token));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return;
+    modelCurated.innerHTML = '';
+    const title = document.createElement('div');
+    title.className = 'model-install-title';
+    title.textContent = 'Featured models';
+    modelCurated.appendChild(title);
+    for (const entry of data.models || []) {
+      const card = document.createElement('div');
+      card.className = 'curated-card';
+      const head = document.createElement('div');
+      head.className = 'curated-head';
+      const info = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'curated-name';
+      name.textContent = entry.name;
+      const meta = document.createElement('div');
+      meta.className = 'curated-meta';
+      meta.textContent = entry.publisher + ' · ' + entry.quant + ' · ' + humanSize(entry.size_bytes) + ' · ' + (entry.capabilities || []).join(' / ');
+      info.append(name, meta);
+      const button = document.createElement('button');
+      button.type = 'button';
+      if (entry.installable === false) {
+        button.textContent = 'Multimodal support pending';
+        button.disabled = true;
+        button.title = entry.note || '';
+      } else {
+        button.textContent = 'Install';
+        button.addEventListener('click', () => installCurated(entry));
+      }
+      head.append(info, button);
+      card.appendChild(head);
+      if (entry.note) {
+        const note = document.createElement('div');
+        note.className = 'curated-note';
+        note.textContent = entry.note;
+        card.appendChild(note);
+      }
+      modelCurated.appendChild(card);
+    }
+  } catch (error) {
+    modelCurated.textContent = String(error);
+  }
+}
+
+async function installCurated(entry) {
+  if (modelDownloadTimer) return;
+  if (!confirm('Download and install "' + entry.name + '"?\n\nRepo: ' + entry.repo + '\nFile: ' + entry.file + '\n\nIt will not be loaded automatically.')) return;
+  modelInstallStatus.textContent = 'Starting download…';
+  try {
+    const response = await fetch('/api/model-catalog/install?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo: entry.repo, file: entry.file }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      modelInstallStatus.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    modelInstallStatus.textContent = 'Download started.';
+    startModelDownloadPolling();
+  } catch (error) {
+    modelInstallStatus.textContent = String(error);
+  }
+}
 
 async function refreshLocalModels() {
   if (!token) return;
@@ -1519,6 +1592,7 @@ modelToggle.addEventListener('click', () => {
   if (!modelPanel.hidden) {
     mcpPanel.hidden = true;
     refreshProviders().then(() => refreshLocalModels());
+    refreshCuratedModels();
     refreshModelDownload();
   } else {
     stopModelDownloadTimer();
