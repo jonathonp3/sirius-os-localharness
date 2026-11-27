@@ -15,7 +15,7 @@
     {
       "name": "markdown_style_guide",
       "description": "Return the local Markdown formatting style guide.",
-      "command": "cat SKILL.md",
+      "command": "cat skills/markdown-formatter/SKILL.md",
       "parameters": {},
       "required": [],
       "sandbox": false,
@@ -26,5 +26,8 @@
         "shell": false
       }
     }
+  ],
+  "skills": [
+    "skills/markdown-formatter/SKILL.md"
   ]
 }

@@ -30,6 +30,8 @@ pub struct Plugin {
     pub package: String,
     #[serde(default)]
     pub permissions: Permissions,
+    #[serde(default)]
+    pub skills: Vec<String>,
     #[serde(skip)]
     pub package_dir: Option<PathBuf>,
 }
@@ -74,6 +76,7 @@ const PLUGIN_API: &str = "1";
 const BUNDLED_LINUX_OPS_JSON: &[u8] = include_bytes!("../plugins/linux-ops/plugin.json");
 const BUNDLED_LINUX_OPS_PY: &[u8] = include_bytes!("../plugins/linux-ops/bin/linux_ops.py");
 const BUNDLED_SYSTEM_PROFILE_PY: &[u8] = include_bytes!("../plugins/linux-ops/bin/system_profile.py");
+const BUNDLED_JOURNAL_SKILL: &[u8] = include_bytes!("../plugins/linux-ops/skills/journal-check/SKILL.md");
 
 fn version_tuple(value: &str) -> (u64, u64, u64) {
     let mut parts = value.trim_start_matches('v').split('.');
@@ -113,6 +116,8 @@ struct PackageFile {
     tools: Vec<PluginTool>,
     #[serde(default)]
     permissions: Permissions,
+    #[serde(default)]
+    skills: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -267,6 +272,7 @@ fn load_package_file(path: &Path, package_dir: &Path) -> Result<Vec<Plugin>> {
             min_harness: package.min_harness.clone(),
             package: package.name.clone(),
             permissions: tool.permissions.clone(),
+            skills: package.skills.clone(),
             package_dir: Some(package_dir.to_path_buf()),
         };
         validate(&plugin, &mut names)?;
@@ -377,6 +383,8 @@ pub fn bootstrap_bundled() -> Result<()> {
         std::fs::write(destination.join("plugin.json"), BUNDLED_LINUX_OPS_JSON)?;
         std::fs::write(destination.join("bin/linux_ops.py"), BUNDLED_LINUX_OPS_PY)?;
         std::fs::write(destination.join("bin/system_profile.py"), BUNDLED_SYSTEM_PROFILE_PY)?;
+        std::fs::create_dir_all(destination.join("skills/journal-check"))?;
+        std::fs::write(destination.join("skills/journal-check/SKILL.md"), BUNDLED_JOURNAL_SKILL)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -391,6 +399,7 @@ pub fn bootstrap_bundled() -> Result<()> {
         }
     }
     let loaded = load(&destination)?;
+    install_skills(&destination, &loaded)?;
     let Some(first) = loaded.first() else {
         bail!("bundled linux-ops package is empty");
     };
@@ -504,6 +513,43 @@ pub fn install(source: &Path) -> Result<Installed> {
     install_from_dir(source)
 }
 
+fn skills_config_dir() -> Result<PathBuf> {
+    let home = std::env::var_os("HOME").context("HOME is not set")?;
+    Ok(PathBuf::from(home).join(".config/local-harness/skills"))
+}
+
+fn install_skills(package_dir: &Path, plugins: &[Plugin]) -> Result<Vec<String>> {
+    let mut installed = Vec::new();
+    for plugin in plugins {
+        for relative in &plugin.skills {
+            let relative = Path::new(relative);
+            if relative.is_absolute() || relative.components().any(|part| matches!(part, std::path::Component::ParentDir)) {
+                bail!("invalid skill path `{}`", relative.display());
+            }
+            let source = package_dir.join(relative);
+            if !source.is_file() {
+                bail!("skill file `{}` is missing", source.display());
+            }
+            let source = source.canonicalize().with_context(|| format!("resolving {}", source.display()))?;
+            if !source.starts_with(package_dir) {
+                bail!("skill path escapes package: {}", source.display());
+            }
+            let parent = relative.parent().filter(|parent| !parent.as_os_str().is_empty());
+            let name = parent
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                .filter(|name| *name != "skills")
+                .unwrap_or(&plugin.name)
+                .to_string();
+            let destination = skills_config_dir()?.join(&name);
+            std::fs::create_dir_all(&destination)?;
+            std::fs::copy(&source, destination.join("SKILL.md"))?;
+            installed.push(name);
+        }
+    }
+    Ok(installed)
+}
+
 fn install_from_dir(source: &Path) -> Result<Installed> {
     let loaded = load(source)?;
     let Some(first) = loaded.first() else {
@@ -528,6 +574,7 @@ fn install_from_dir(source: &Path) -> Result<Installed> {
         std::fs::remove_dir_all(&destination)?;
     }
     copy_dir(source, &destination)?;
+    install_skills(&destination, &loaded)?;
     registry.plugins.retain(|entry| entry.name != package_name);
     let entry = Installed {
         name: package_name.clone(),

@@ -131,5 +131,8 @@
     "write": "none",
     "host": true,
     "shell": true
-  }
+  },
+  "skills": [
+    "skills/journal-check/SKILL.md"
+  ]
 }
