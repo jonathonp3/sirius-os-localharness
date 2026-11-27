@@ -98,6 +98,7 @@ pub async fn run(
         .route("/api/models", get(models))
         .route("/api/providers", get(providers_status))
         .route("/api/providers/select", post(select_provider))
+        .route("/api/providers/restart", post(restart_provider))
         .route("/api/local-models", get(local_models))
         .route("/api/local-models/tags", post(set_local_model_tags))
         .route("/api/local-models/select", post(select_local_model))
@@ -328,6 +329,35 @@ async fn providers_status(
         "secrets_path": providers::secrets_path().map(|path| path.to_string_lossy().to_string()).unwrap_or_default(),
     }))
     .into_response()
+}
+
+async fn restart_provider(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let mut command = if std::env::var_os("FLATPAK_ID").is_some() {
+        let mut command = tokio::process::Command::new("flatpak-spawn");
+        command.args(["--host", "sh", "-c", "sleep 1; systemctl --user restart local-harness-flatpak"]);
+        command
+    } else {
+        let mut command = tokio::process::Command::new("systemctl");
+        command.args(["--user", "restart", "local-harness-flatpak"]);
+        command
+    };
+    match command.spawn() {
+        Ok(_) => Json(json!({
+            "restarting": true,
+            "message": "Restarting Local Harness. The window will reconnect.",
+        }))
+        .into_response(),
+        Err(error) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("starting restart: {error}") }))).into_response()
+        }
+    }
 }
 
 #[derive(Deserialize)]
