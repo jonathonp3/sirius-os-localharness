@@ -65,8 +65,24 @@ pub fn selection_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("provider.json"))
 }
 
+pub fn secrets_paths() -> Result<Vec<PathBuf>> {
+    let primary = config_dir()?.join("secrets.env");
+    let home = std::env::var_os("HOME").context("HOME is not set")?;
+    let host = PathBuf::from(home).join(".config/local-harness/secrets.env");
+    if primary == host {
+        Ok(vec![primary])
+    } else {
+        Ok(vec![primary, host])
+    }
+}
+
 pub fn secrets_path() -> Result<PathBuf> {
-    Ok(config_dir()?.join("secrets.env"))
+    let paths = secrets_paths()?;
+    Ok(paths
+        .iter()
+        .find(|path| path.exists())
+        .cloned()
+        .unwrap_or_else(|| paths[0].clone()))
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -105,30 +121,32 @@ pub fn select(id: &str) -> Result<()> {
 }
 
 fn read_secret_file(key: &str) -> Result<Option<String>> {
-    let path = secrets_path()?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&path)?.permissions().mode();
-        if mode & 0o077 != 0 {
-            bail!("{} must not be readable by group or others; use chmod 600", path.display());
-        }
-    }
-    let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+    for path in secrets_paths()? {
+        if !path.exists() {
             continue;
         }
-        if let Some((name, value)) = line.split_once('=') {
-            if name.trim() == key {
-                let value = value.trim().trim_matches('"').trim_matches('\'');
-                if !value.is_empty() {
-                    return Ok(Some(value.to_string()));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path)?.permissions().mode();
+            if mode & 0o077 != 0 {
+                bail!("{} must not be readable by group or others; use chmod 600", path.display());
+            }
+        }
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("reading {}", path.display()))?;
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let line = line.strip_prefix("export ").unwrap_or(line);
+            if let Some((name, value)) = line.split_once('=') {
+                if name.trim() == key {
+                    let value = value.trim().trim_matches('"').trim_matches('\'');
+                    if !value.is_empty() {
+                        return Ok(Some(value.to_string()));
+                    }
                 }
             }
         }
