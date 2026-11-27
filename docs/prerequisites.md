@@ -35,6 +35,18 @@ sudo rpm-ostree install fuse fuse-libs
 
 CI builds pass `--disable-rofiles-fuse`, so CI does not need a working FUSE mount. AppImages can also run with `--appimage-extract-and-run` when FUSE is unavailable.
 
+Verified on 2026-11-27 on a Fedora 45 VM:
+
+```text
+fuse:       not installed
+fuse-libs:  not installed
+fuse3:      installed (host base)
+cmake/g++:  installed only inside a Fedora build container
+llama.cpp:  CPU build succeeded
+```
+
+The build produced a working `llama-server`; FUSE was not required.
+
 Verify:
 
 ```bash
