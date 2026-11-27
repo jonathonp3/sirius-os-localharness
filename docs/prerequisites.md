@@ -23,7 +23,15 @@ sudo rpm-ostree install distrobox
 
 Verify both:
 
-Optional host package:
+```bash
+distrobox --version
+podman --version
+fusermount --version || fusermount3 --version
+```
+
+If `podman` is missing on a minimal or custom image, install it with `rpm-ostree` or use a Distrobox/Toolbox image that provides it.
+
+### Optional: FUSE
 
 ```bash
 sudo rpm-ostree install fuse fuse-libs
@@ -48,14 +56,6 @@ llama.cpp:  CPU build succeeded
 ```
 
 The build produced a working `llama-server`; FUSE was not required.
-
-```bash
-distrobox --version
-podman --version
-fusermount --version || fusermount3 --version
-```
-
-If `podman` is missing on a minimal or custom image, install it with `rpm-ostree` or use the Distrobox/Toolbox image that provides it.
 
 ## 2. Create the llama container
 
