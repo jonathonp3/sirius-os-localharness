@@ -1,5 +1,24 @@
 # Troubleshooting
 
+## Multiple app instances or stale windows
+
+Several Local Harness windows can compete for the same service and token. Close them all before diagnosing:
+
+```bash
+flatpak ps | grep org.jonathonp3.LocalHarness
+flatpak kill org.jonathonp3.LocalHarness
+systemctl --user stop local-harness-flatpak
+```
+
+Then start one fresh instance:
+
+```bash
+systemctl --user start local-harness-flatpak
+local-harness-window
+```
+
+If `flatpak ps` shows more than one `org.jonathonp3.LocalHarness` process, kill the app before reopening. A window opened before a service restart can keep an old token and appear to send messages that never receive a response.
+
 ## The app does not respond
 
 Check the service and provider:
