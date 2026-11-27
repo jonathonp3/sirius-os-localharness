@@ -16,12 +16,24 @@ systemd user
 On Fedora Silverblue:
 
 ```bash
-sudo rpm-ostree install distrobox podman fuse fuse-libs
+sudo rpm-ostree install distrobox podman
 ```
 
 If those are already present, skip the layering. `distrobox` and `podman` are also available from Flathub or a toolbox image.
 
-`fuse` and `fuse-libs` are not required by llama.cpp itself. They matter for local Flatpak/container build tooling, especially `flatpak-builder` and FUSE-backed filesystems. CI builds pass `--disable-rofiles-fuse`, so it does not need a working FUSE mount inside the runner.
+Optional host package:
+
+```bash
+sudo rpm-ostree install fuse fuse-libs
+```
+
+`fuse` and `fuse-libs` are not required by llama.cpp or Local Harness itself. They are useful if you:
+
+- build Flatpaks locally with FUSE-backed filesystems
+- run AppImages that mount their squashfs image through FUSE
+- use other FUSE-dependent container or image tooling
+
+CI builds pass `--disable-rofiles-fuse`, so CI does not need a working FUSE mount. AppImages can also run with `--appimage-extract-and-run` when FUSE is unavailable.
 
 Verify:
 
