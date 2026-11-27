@@ -21,7 +21,7 @@ sudo rpm-ostree install distrobox
 
 `podman` is installed by default on Fedora Silverblue and Fedora Workstation. Do not layer it again. `distrobox` is not part of the default image on Silverblue, so it normally needs installing.
 
-Verify both:
+Verify the tools:
 
 ```bash
 distrobox --version
@@ -82,7 +82,7 @@ sudo dnf install -y \
   openssl-devel python3
 ```
 
-Package names vary by Fedora release. `vulkaninfo` and `glslc` are the important build checks. FUSE is a host-side packaging dependency, not a container build dependency:
+Package names vary by Fedora release. `vulkaninfo` and `glslc` are the important build checks. FUSE, if used, is a host-side packaging dependency; it is not installed inside this build container:
 
 ```bash
 vulkaninfo --summary
