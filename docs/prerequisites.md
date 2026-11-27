@@ -184,20 +184,62 @@ cp -a build-lfm/bin build/bin
 systemctl --user restart llama-server
 ```
 
-## 4. Install the helper wrappers
+## 4. Install Local Harness and helper wrappers
 
-This is the first step that needs the Local Harness package or source tree. The Flatpak alone does not install these host helpers.
+The Flatpak and the host helper scripts are separate. Install the Flatpak for the UI, then get the helper scripts from the release tarball or a source checkout.
 
-From the packaged release:
+### Option A: Flatpak + helper scripts from a release tarball (recommended)
+
+Install the Flatpak first:
 
 ```bash
+flatpak install --system local-harness org.jonathonp3.LocalHarness
+```
+
+Download the release tarball, extract it, and install only the helpers:
+
+```bash
+tar -xzf local-harness-<version>.tar.gz
+cd local-harness-<version>
+
 install -Dm755 local-harness-llama-start \
   ~/.local/bin/local-harness-llama-start
 install -Dm755 local-harness-modelctl \
   ~/.local/bin/local-harness-modelctl
 ```
 
-From this repository:
+Do **not** run `install.sh` for a Flatpak-only setup. It installs the source-mode `local-harness.service` and desktop entries, which are not needed when the Flatpak host service is used.
+
+### Option B: full source/tarball install
+
+If you are not using the Flatpak:
+
+```bash
+tar -xzf local-harness-<version>.tar.gz
+cd local-harness-<version>
+./install.sh
+```
+
+This installs:
+
+```text
+~/.local/bin/harness
+~/.local/bin/local-harness-window
+~/.local/bin/local-harness-modelctl
+~/.local/bin/local-harness-llama-start
+~/.local/share/applications/org.jonathonp3.LocalHarness.desktop
+~/.config/systemd/user/local-harness.service
+```
+
+### Option C: clone and install from source
+
+```bash
+git clone https://github.com/jonathonp3/sirius-os-localharness.git
+cd sirius-os-localharness
+./scripts/build-vm.sh      # if the host has no C linker
+```
+
+Then use the tarball/package layout from `packaging/`, or copy the helper scripts directly:
 
 ```bash
 cd packaging
@@ -207,7 +249,7 @@ install -Dm755 local-harness-modelctl \
   ~/.local/bin/local-harness-modelctl
 ```
 
-Verify:
+### Verify
 
 ```bash
 ~/.local/bin/local-harness-modelctl list
