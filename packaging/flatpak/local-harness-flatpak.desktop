@@ -6,4 +6,5 @@ Exec=local-harness-flatpak
 Terminal=false
 Icon=org.jonathonp3.LocalHarness
 Categories=Development;
+StartupWMClass=org.jonathonp3.LocalHarness
 StartupNotify=false

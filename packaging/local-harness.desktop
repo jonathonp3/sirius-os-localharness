@@ -6,4 +6,5 @@ Exec=@HOME@/.local/bin/local-harness-window
 Icon=org.jonathonp3.LocalHarness
 Terminal=false
 Categories=Development;
+StartupWMClass=org.jonathonp3.LocalHarness
 StartupNotify=false

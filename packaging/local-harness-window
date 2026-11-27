@@ -134,7 +134,7 @@ def main():
     gi.require_version("WebKit", "6.0")
     from gi.repository import Gtk, Gdk, Gio, WebKit
 
-    app = Gtk.Application(application_id=f"{APP_ID}.Native")
+    app = Gtk.Application(application_id=APP_ID)
 
     def on_activate(app):
         window = Gtk.ApplicationWindow(application=app, title="Local Harness")
