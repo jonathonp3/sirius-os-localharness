@@ -4,6 +4,15 @@ This page covers the moving parts around llama.cpp: the distrobox container, the
 
 The Flatpak is self-contained for the harness. The model server is a separate host service.
 
+There are two independent install tracks:
+
+```text
+llama.cpp runtime:  container → build → wrappers → systemd
+Local Harness:      Flatpak or source/tarball install
+```
+
+Building llama.cpp does **not** require Local Harness to be installed first. The wrapper scripts come from the Local Harness release tarball or source tree, and they must be on the host before model switching or the systemd unit will work.
+
 ```text
 systemd user
 ├── llama-server.service       → llama-dev distrobox → llama-server :8080
@@ -176,6 +185,8 @@ systemctl --user restart llama-server
 ```
 
 ## 4. Install the helper wrappers
+
+This is the first step that needs the Local Harness package or source tree. The Flatpak alone does not install these host helpers.
 
 From the packaged release:
 
