@@ -48,8 +48,8 @@
       ],
       "vram_gb": 4,
       "mmproj": "mmproj-LFM3-Omni-2B-Q8_0.gguf",
-      "installable": true,
-      "note": "Downloads the Q4_K_M model and its mmproj companion. Requires a llama-server build with LFM 3 Omni multimodal support."
+      "installable": false,
+      "note": "Requires llama.cpp with LFM3-Omni support (PR #31257, merged 2026-10-27). The current llama.cpp build is 846639535 from 2026-10-19, so it cannot load this model yet."
     }
   ]
 }
