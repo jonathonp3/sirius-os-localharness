@@ -40,9 +40,12 @@ Each task card supports:
 - Resume
 - End
 - Run now
+- View result
 - Delete
 
 `Run now` executes immediately in a new session without waiting for the schedule.
+Once a task has run, **View result** opens that session in the chat. The task card
+also shows a short result preview.
 
 ## Scheduling
 

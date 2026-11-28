@@ -1406,17 +1406,18 @@ async fn run_automation(state: Arc<AppState>, task: AutomationTask) {
         let session = Session::create(&state.data_dir, &state.config.model).await?;
         let mut sink = AutomationSink;
         let outcome = agent::run(state.config.clone(), &session, &task.prompt, Vec::new(), &mut sink).await?;
-        Ok::<String, anyhow::Error>(outcome.content)
+        Ok::<(String, String), anyhow::Error>((outcome.content, session.id))
     }
     .await;
-    let text = match result {
-        Ok(text) => text,
-        Err(error) => format!("automation error: {error:#}"),
+    let (text, session_id) = match result {
+        Ok((text, session_id)) => (text, Some(session_id)),
+        Err(error) => (format!("automation error: {error:#}"), None),
     };
     let preview: String = text.chars().take(2000).collect();
     let mut tasks = state.automations.lock().await;
     if let Some(entry) = tasks.iter_mut().find(|entry| entry.id == task.id) {
         entry.last_result = Some(preview);
+        entry.last_session = session_id;
         entry.last_run = Some(Local::now().timestamp());
     }
     drop(tasks);

@@ -2685,6 +2685,17 @@ function renderAutomations() {
       else if (!task.ended) addAction('Pause', 'pause');
       if (!task.ended) addAction('End', 'end');
       addAction('Run now', 'run');
+      if (task.last_session) {
+        const view = document.createElement('button');
+        view.type = 'button';
+        view.textContent = 'View result';
+        view.dataset.action = 'view';
+        view.addEventListener('click', async () => {
+          automationPanel.hidden = true;
+          await loadSession(task.last_session);
+        });
+        actions.appendChild(view);
+      }
       addAction('Delete', 'delete');
       card.appendChild(actions);
       automationList.appendChild(card);

@@ -26,6 +26,8 @@ pub struct AutomationTask {
     pub next_run: Option<i64>,
     #[serde(default)]
     pub last_result: Option<String>,
+    #[serde(default)]
+    pub last_session: Option<String>,
 }
 
 pub async fn load(path: &Path) -> Result<Vec<AutomationTask>> {
@@ -131,6 +133,7 @@ pub fn create(title: String, prompt: String, frequency: String, time: String, we
         last_run: None,
         next_run: None,
         last_result: None,
+        last_session: None,
     };
     task.next_run = Some(initial_next_run(&task)?);
     Ok(task)
