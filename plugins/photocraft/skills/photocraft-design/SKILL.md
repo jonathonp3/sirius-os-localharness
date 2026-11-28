@@ -20,8 +20,7 @@ Required path:
 icon_compose or run_spec
 → document_check
 → document_export (.psd, layered)
-→ document_export (.png, preview)
-→ Artifact: /absolute/path/to/export.png
+→ Artifact: /absolute/path/to/export.preview.png
 ```
 
 If PhotoCraft is unavailable, report that image creation is unavailable. Do not
@@ -95,21 +94,23 @@ fix only the named element, then check again.
 Call `document_export` without `force` for a normal export. The export must pass
 the strict validator.
 
-Save the editable master as Photoshop format by default:
+PhotoCraft has no implicit format; the path selects it. Save the editable master
+as Photoshop format by default:
 
 ```text
 document_export path=/absolute/path/design.psd
 ```
 
-Then export a PNG preview for the Local Harness artifact panel:
+PhotoCraft automatically exports a sidecar preview:
 
 ```text
-document_export path=/absolute/path/design.png
+/absolute/path/design.preview.png
 ```
 
-Do not use the PNG as the master. The PSD is the editable source with layers,
-text, and history preserved. Do not use `force=true` unless the user explicitly
-asks to bypass validation.
+Use that preview for Local Harness display. Do not use the PNG as the master.
+The PSD is the editable source with layers, text, and history preserved. If the
+preview is not returned, export a PNG explicitly. Do not use `force=true` unless
+the user explicitly asks to bypass validation.
 
 ### 6. Visual critique
 
@@ -135,7 +136,7 @@ After a successful export, include one machine-readable handoff line:
 
 ```text
 Layered file: /absolute/path/design.psd
-Artifact: /absolute/path/design.png
+Artifact: /absolute/path/design.preview.png
 ```
 
 Use actual exported paths, not placeholders, and do not wrap the paths in
@@ -148,7 +149,7 @@ Then report:
 spec or command used
 deterministic result
 Layered file: /absolute/path/design.psd
-Artifact: /absolute/path/design.png
+Artifact: /absolute/path/design.preview.png
 critic observations, clearly labelled as observations
 ```
 

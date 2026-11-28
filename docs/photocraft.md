@@ -155,15 +155,23 @@ deterministic validation → CPU
 
 ## Export format
 
-The editable master is Photoshop `.psd` by default, preserving layers, text, and
-editability. A `.png` preview is exported for the chat/artifact panel; browsers
-cannot display PSD directly.
+PhotoCraft has no implicit format; the export path selects it. The Local Harness
+skill defaults to a layered Photoshop `.psd` master, preserving layers, text,
+and editability. PhotoCraft automatically writes a sidecar preview:
+
+```text
+/absolute/path/design.psd
+/absolute/path/design.preview.png
+```
+
+The preview is used for the chat/artifact panel; browsers cannot display PSD
+directly.
 
 Report both:
 
 ```text
 Layered file: /absolute/path/design.psd
-Artifact: /absolute/path/design.png
+Artifact: /absolute/path/design.preview.png
 ```
 
 ## Artifact handoff
