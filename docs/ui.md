@@ -48,6 +48,15 @@ Supported:
 Files are served only from the workspace, with a 25 MB limit. The panel is for
 display only; it does not edit artifacts.
 
+For assistant output, a line such as:
+
+```text
+Artifact: /absolute/path/to/export.png
+```
+
+is rendered as an inline thumbnail in the response. Clicking the thumbnail opens
+the artifact panel. Code artifacts appear as an "Open" button.
+
 ## Markdown and code
 
 - Markdown rendering

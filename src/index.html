@@ -138,6 +138,10 @@ body.sidebar-open { padding-left:350px; }
 .tool-artifacts { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
 .tool-artifact { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 7px; font-size:12px; cursor:pointer; max-width:100%; }
 .tool-artifact img { display:block; max-width:120px; max-height:90px; border-radius:4px; }
+.inline-artifacts { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
+.inline-artifact { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:6px; cursor:pointer; }
+.inline-artifact img { display:block; max-width:320px; max-height:240px; border-radius:5px; }
+.inline-artifact span { display:block; color:var(--muted); font-size:12px; margin-top:4px; max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .model-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:7px; }
 .model-head strong { font-size:16px; }
 #model-close { background:var(--bg); color:var(--text); border:1px solid var(--border); min-width:30px; min-height:28px; padding:0 8px; font-size:17px; }
@@ -1569,8 +1573,10 @@ function appendHistoryMessage(message) {
   } else if (message.role === 'assistant') {
     if (message.content) {
       const element = add('assistant');
+      element.dataset.raw = message.content;
       element.innerHTML = renderMarkdown(message.content);
       enhanceAssistant(element);
+      renderInlineArtifacts(element, message.content);
     }
     if (Array.isArray(message.tool_calls)) {
       for (const call of message.tool_calls) {
@@ -2516,6 +2522,39 @@ function registerArtifacts(card, text) {
   card.appendChild(row);
 }
 
+function renderInlineArtifacts(element, rawText) {
+  if (!element || element.dataset.artifactsRendered === '1') return;
+  const text = rawText || element.dataset.raw || element.textContent || '';
+  const found = extractArtifacts(text);
+  if (!found.length) return;
+  element.dataset.artifactsRendered = '1';
+  for (const path of found) {
+    if (!artifacts.includes(path)) artifacts.push(path);
+  }
+  renderArtifactList();
+  const row = document.createElement('div');
+  row.className = 'inline-artifacts';
+  for (const path of found) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'inline-artifact';
+    item.title = path;
+    if (artifactKind(path) === 'image') {
+      const image = document.createElement('img');
+      image.src = artifactUrl(path);
+      image.alt = artifactName(path);
+      image.loading = 'lazy';
+      item.appendChild(image);
+    }
+    const label = document.createElement('span');
+    label.textContent = artifactKind(path) === 'image' ? artifactName(path) : 'Open ' + artifactName(path);
+    item.appendChild(label);
+    item.addEventListener('click', () => openArtifact(path));
+    row.appendChild(item);
+  }
+  element.appendChild(row);
+}
+
 artifactClose.addEventListener('click', () => { artifactPanel.hidden = true; });
 
 function finishToolCard(card, chars, preview) {
@@ -2615,6 +2654,7 @@ function handleBlock(block) {
     assistantEl = null;
   } else if (event === 'done') {
     finished = true;
+    if (assistantEl) renderInlineArtifacts(assistantEl, assistantEl.dataset.raw || '');
     currentSessionId = payload.session;
     const cached = payload.cached_tokens ? ' · ' + payload.cached_tokens + ' cached' : '';
     add('meta', 'session ' + payload.session + ' · ' + payload.prompt_tokens + '→' + payload.completion_tokens + ' tokens' + cached);
