@@ -139,6 +139,7 @@ pub async fn run(
             .await?;
     }
 
+    let mut force_download = explicit_download_request(prompt, &names, &config);
     let mut final_usage: Option<Usage> = None;
     let mut log_degraded = false;
     let mut children = 0usize;
@@ -196,11 +197,11 @@ pub async fn run(
                         if reasoning { sink.reasoning(text) } else { sink.token(text) }
                     };
                     client
-                        .complete(&messages, &definitions, config.max_tokens, config.temperature, config.think, config.cancel.as_ref(), &mut on_delta)
+                        .complete(&messages, &definitions, config.max_tokens, config.temperature, config.think, config.cancel.as_ref(), force_download.then_some("web_download"), &mut on_delta)
                         .await
                 };
                 match result {
-                    Ok(turn) => break turn,
+                    Ok(turn) => { force_download = false; break turn }
                     Err(error)
                         if !context_retry
                             && error.to_string().contains("exceeds the available context size") =>
@@ -387,7 +388,7 @@ async fn compact(
     let request = vec![Message::system(system), Message::user(transcript)];
     let mut ignore = |_reasoning: bool, _text: &str| {};
     let turn = client
-        .complete(&request, &[], 200, 0.0, false, config.cancel.as_ref(), &mut ignore)
+        .complete(&request, &[], 200, 0.0, false, config.cancel.as_ref(), None, &mut ignore)
         .await?;
     let summary = turn.content.trim().to_string();
     if summary.is_empty() {
@@ -572,6 +573,17 @@ pub(crate) fn load_skills(workspace: &std::path::Path) -> Vec<(String, String)> 
         ));
     }
     skills
+}
+
+fn explicit_download_request(prompt: &str, tools: &[String], config: &Config) -> bool {
+    if !config.web || !config.allow_downloads || !tools.iter().any(|tool| tool == "web_download") {
+        return false;
+    }
+    let lower = prompt.to_ascii_lowercase();
+    let has_url = lower.contains("https://") || lower.contains("http://");
+    let explicit = lower.contains("web_download")
+        || (has_url && (lower.contains("download ") || lower.contains("download\n") || lower.contains("download:")));
+    explicit && has_url
 }
 
 fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) -> String {

@@ -165,6 +165,7 @@ impl Client {
         temperature: f32,
         think: bool,
         cancel: Option<&Arc<AtomicBool>>,
+        forced_tool: Option<&str>,
         on_delta: &mut (dyn FnMut(bool, &str) + Send),
     ) -> Result<Turn> {
         if is_cancelled(cancel) {
@@ -183,7 +184,10 @@ impl Client {
         }
         if !tools.is_empty() {
             body["tools"] = Value::Array(tools.to_vec());
-            body["tool_choice"] = json!("auto");
+            body["tool_choice"] = match forced_tool {
+                Some(name) => json!({ "type": "function", "function": { "name": name } }),
+                None => json!("auto"),
+            };
         }
 
         let url = self.chat_url();
