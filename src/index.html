@@ -2634,6 +2634,7 @@ function renderInlineArtifacts(element, rawText) {
 
 let automationTasks = [];
 let automationTab = 'enabled';
+let automationRefreshTimer = null;
 
 function automationStatus(task) {
   if (task.ended) return 'ended';
@@ -2675,7 +2676,7 @@ function renderAutomations() {
       if (task.last_result) {
         const result = document.createElement('div');
         result.className = 'automation-result';
-        result.textContent = task.last_result;
+        result.textContent = 'Last result:\n' + task.last_result;
         card.appendChild(result);
       }
       const actions = document.createElement('div');
@@ -2782,15 +2783,32 @@ async function automationAction(id, action) {
   }
 }
 
+function startAutomationRefresh() {
+  if (automationRefreshTimer) clearInterval(automationRefreshTimer);
+  automationRefreshTimer = setInterval(() => {
+    if (!automationPanel.hidden) refreshAutomations();
+  }, 5000);
+}
+
 automationToggle.addEventListener('click', () => {
   automationPanel.hidden = !automationPanel.hidden;
   if (!automationPanel.hidden) {
     modelPanel.hidden = true;
     mcpPanel.hidden = true;
     refreshAutomations();
+    startAutomationRefresh();
+  } else if (automationRefreshTimer) {
+    clearInterval(automationRefreshTimer);
+    automationRefreshTimer = null;
   }
 });
-automationClose.addEventListener('click', () => { automationPanel.hidden = true; });
+automationClose.addEventListener('click', () => {
+  automationPanel.hidden = true;
+  if (automationRefreshTimer) {
+    clearInterval(automationRefreshTimer);
+    automationRefreshTimer = null;
+  }
+});
 automationNew.addEventListener('click', () => { automationForm.hidden = !automationForm.hidden; if (!automationForm.hidden) automationTitle.focus(); });
 automationCancel.addEventListener('click', () => { automationForm.hidden = true; });
 automationForm.addEventListener('submit', createAutomation);
