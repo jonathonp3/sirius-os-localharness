@@ -29,6 +29,14 @@ if not model.is_file():
     print(f"llama model not found: {model}", file=sys.stderr)
     sys.exit(1)
 
+name = model.name.lower()
+if "30b" in name:
+    gpu_layers = "24"
+elif "9b" in name or "7b" in name or "2b" in name:
+    gpu_layers = "99"
+else:
+    gpu_layers = "24"
+
 command = [
     "/usr/bin/distrobox", "enter", "--name", "llama-dev", "--no-tty", "--",
     "/usr/bin/env", f"LD_LIBRARY_PATH={ROOT / 'build' / 'bin'}",
@@ -36,13 +44,14 @@ command = [
     "--model", str(model),
     *(["--mmproj", str(mmproj)] if mmproj else []),
     "--alias", alias,
-    "--n-gpu-layers", "24",
+    "--n-gpu-layers", gpu_layers,
     "--host", "127.0.0.1",
     "--port", "8080",
-    "--ctx-size", "32768",
+    "--ctx-size", "16384",
     "--device", "Vulkan0",
+    "--flash-attn", "on",
     "--jinja",
-    "--threads", "16",
+    "--threads", "8",
     "--predict", "4096",
     "--parallel", "1",
     "--cors-origins", "localhost",

@@ -87,6 +87,29 @@ cp -a build-lfm/bin build/bin
 systemctl --user restart llama-server
 ```
 
+## Tuned startup profiles
+
+`local-harness-llama-start` selects settings by model name:
+
+```text
+9B / 7B / 2B   full GPU offload (-ngl 99)
+30B            partial offload (-ngl 24)
+all            16384 context, 8 threads, Flash Attention
+```
+
+Daily 9B performance measured on this host:
+
+```text
+prompt:     ~89–113 tokens/sec
+generation: ~37 tokens/sec
+```
+
+The 30B model measured about 5.4 tokens/sec generation with partial offload.
+
+Local Harness sends `chat_template_kwargs.enable_thinking=false` for normal
+chat. Without that, Qwen 9B models may spend the entire output budget on
+`reasoning_content` and return an empty visible response.
+
 ## Model sizing
 
 ```text
