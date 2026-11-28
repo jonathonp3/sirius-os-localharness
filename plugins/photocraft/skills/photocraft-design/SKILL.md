@@ -17,10 +17,11 @@ text alone.
 Required path:
 
 ```text
-icon_compose or run_spec
+write_file path=design.spec.json (the locked spec)
+→ icon_compose or run_spec
 → document_check
-→ document_export (.psd, layered)
-→ Artifact: /absolute/path/to/export.preview.png
+→ document_export (.png, lossless)
+→ Artifact: /absolute/path/to/design.png
 ```
 
 If PhotoCraft is unavailable, report that image creation is unavailable. Do not
@@ -94,23 +95,30 @@ fix only the named element, then check again.
 Call `document_export` without `force` for a normal export. The export must pass
 the strict validator.
 
-PhotoCraft has no implicit format; the path selects it. Save the editable master
-as Photoshop format by default:
+PhotoCraft has no implicit format; the path selects it.
+
+Default export:
+
+```text
+document_export path=/absolute/path/design.png
+```
+
+PNG is lossless and is always produced for viewing. Keep the structured spec as
+the editable source of truth:
+
+```text
+/absolute/path/design.spec.json
+```
+
+If the user explicitly asks for a layer-preserving master, additionally export:
 
 ```text
 document_export path=/absolute/path/design.psd
 ```
 
-PhotoCraft automatically exports a sidecar preview:
-
-```text
-/absolute/path/design.preview.png
-```
-
-Use that preview for Local Harness display. Do not use the PNG as the master.
-The PSD is the editable source with layers, text, and history preserved. If the
-preview is not returned, export a PNG explicitly. Do not use `force=true` unless
-the user explicitly asks to bypass validation.
+or a layered TIFF when requested. Keep the PNG preview even when exporting PSD
+or TIFF. Do not use `force=true` unless the user explicitly asks to bypass
+validation.
 
 ### 6. Visual critique
 
@@ -135,8 +143,9 @@ Do not let the critic authorize an edit by itself. Any resulting change must be 
 After a successful export, include one machine-readable handoff line:
 
 ```text
-Layered file: /absolute/path/design.psd
-Artifact: /absolute/path/design.preview.png
+Spec: /absolute/path/design.spec.json
+Artifact: /absolute/path/design.png
+Layered file: /absolute/path/design.psd (optional)
 ```
 
 Use actual exported paths, not placeholders, and do not wrap the paths in
@@ -148,8 +157,9 @@ Then report:
 ```text
 spec or command used
 deterministic result
-Layered file: /absolute/path/design.psd
-Artifact: /absolute/path/design.preview.png
+Spec: /absolute/path/design.spec.json
+Artifact: /absolute/path/design.png
+Layered file: /absolute/path/design.psd (optional)
 critic observations, clearly labelled as observations
 ```
 
