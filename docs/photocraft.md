@@ -153,6 +153,19 @@ coder/tool pass → release
 deterministic validation → CPU
 ```
 
+## Export format
+
+The editable master is Photoshop `.psd` by default, preserving layers, text, and
+editability. A `.png` preview is exported for the chat/artifact panel; browsers
+cannot display PSD directly.
+
+Report both:
+
+```text
+Layered file: /absolute/path/design.psd
+Artifact: /absolute/path/design.png
+```
+
 ## Artifact handoff
 
 After a successful export, the skill reports:

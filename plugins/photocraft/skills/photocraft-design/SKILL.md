@@ -19,7 +19,8 @@ Required path:
 ```text
 icon_compose or run_spec
 → document_check
-→ document_export
+→ document_export (.psd, layered)
+→ document_export (.png, preview)
 → Artifact: /absolute/path/to/export.png
 ```
 
@@ -91,15 +92,24 @@ fix only the named element, then check again.
 
 ### 5. Export gate
 
-Call:
+Call `document_export` without `force` for a normal export. The export must pass
+the strict validator.
+
+Save the editable master as Photoshop format by default:
 
 ```text
-document_export
+document_export path=/absolute/path/design.psd
 ```
 
-without `force` for a normal export. The export must pass the strict validator.
+Then export a PNG preview for the Local Harness artifact panel:
 
-Do not use `force=true` unless the user explicitly asks to bypass validation.
+```text
+document_export path=/absolute/path/design.png
+```
+
+Do not use the PNG as the master. The PSD is the editable source with layers,
+text, and history preserved. Do not use `force=true` unless the user explicitly
+asks to bypass validation.
 
 ### 6. Visual critique
 
@@ -124,19 +134,21 @@ Do not let the critic authorize an edit by itself. Any resulting change must be 
 After a successful export, include one machine-readable handoff line:
 
 ```text
-Artifact: /absolute/path/to/export.png
+Layered file: /absolute/path/design.psd
+Artifact: /absolute/path/design.png
 ```
 
-Use the actual exported path, not a placeholder, and do not wrap the path in
-backticks. This lets Local Harness detect the image and show it in the artifact
-panel.
+Use actual exported paths, not placeholders, and do not wrap the paths in
+backticks. The `Artifact:` line points at the PNG preview so Local Harness can
+display it; the `Layered file:` line identifies the editable PSD master.
 
 Then report:
 
 ```text
 spec or command used
 deterministic result
-Artifact: /absolute/path/to/export.png
+Layered file: /absolute/path/design.psd
+Artifact: /absolute/path/design.png
 critic observations, clearly labelled as observations
 ```
 
