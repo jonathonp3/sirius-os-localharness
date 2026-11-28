@@ -2,6 +2,10 @@
 
 PhotoCraft is an MCP server for structured icon and design work.
 
+When the user asks to create an image, make an icon, or design a logo, route the
+request through PhotoCraft. DeepSeek can plan and call tools, but it cannot
+generate the image itself.
+
 ## Why MCP
 
 PhotoCraft is stateful and multi-tool. It owns:

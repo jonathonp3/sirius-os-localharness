@@ -1,12 +1,30 @@
 ---
 name: photocraft-design
 display-name: PhotoCraft Design
-description: Compose and verify PhotoCraft icons using a locked structured spec, deterministic validation, and a read-only vision critic.
+description: Use for image creation, icon design, composition, or visual verification. Trigger when the user says "create image", "make an icon", "design a logo", or asks for PhotoCraft output. Compose and verify with a locked structured spec, deterministic validation, and a read-only vision critic.
 ---
 
 # PhotoCraft Design
 
 Use this skill for PhotoCraft icon or design work.
+
+## Image creation routing
+
+When the user asks to "create an image", "make an icon", "design a logo", or
+similar, use the PhotoCraft MCP tools. Do not claim an image was created from
+text alone.
+
+Required path:
+
+```text
+icon_compose or run_spec
+→ document_check
+→ document_export
+→ Artifact: /absolute/path/to/export.png
+```
+
+If PhotoCraft is unavailable, report that image creation is unavailable. Do not
+substitute a text description for the requested image.
 
 ## Roles
 
