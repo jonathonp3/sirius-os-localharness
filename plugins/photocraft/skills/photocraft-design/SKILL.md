@@ -91,13 +91,27 @@ Do not rebuild the whole design to change one label or parameter.
 
 ### 4. Deterministic check
 
-Call:
+For `run_spec`, the spec runner validates and builds the document; do not call
+`document_check` against a fresh/blank document afterwards. For `icon_compose`
+or an active document being refined, call:
 
 ```text
 document_check
 ```
 
 Treat its score and warnings as hard evidence.
+
+Spec constraints that prevent common failures:
+
+- gradient stop positions must be numbers, not strings:
+  `"stops": [[0, "#003366"], [0.3, "#66ccff"]]`
+- include at least one actual shape layer; a gradient background alone may not
+  satisfy the validator
+- text `x`/`y` are top-left unless `width`, `height`, and `align: "center"` make
+  the box center at `x`
+- use absolute paths for `run_spec` and `document_export`
+- a `run_spec` export may close the active document; rely on its returned result,
+  not a later `document_check` on an empty canvas
 
 If it reports:
 
