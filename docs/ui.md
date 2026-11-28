@@ -33,6 +33,12 @@ Local model controls are disabled while a remote provider is active.
 
 Shows connected servers, transport, tools, and failures.
 
+## Automation tasks
+
+The header **Tasks** button opens a panel with Enabled, Paused, Ended, and All
+tabs, search, a create form, and a Daily/Weekly review. See
+[automation.md](automation.md).
+
 ## Artifacts
 
 The artifact panel is hidden by default. When a tool result contains a workspace

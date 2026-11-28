@@ -17,6 +17,7 @@ Browser or CLI ── HTTP/SSE ── harness ── llama.cpp / DeepSeek / Kimi
 - **Safe tools.** Read-only by default; write, shell, plugins, and MCP are explicit opt-ins.
 - **Approvals.** Destructive commands and host-level plugins pause for confirmation.
 - **Sessions and workspaces.** Resume, fork, search, export, pin, and organise chats.
+- **Automation tasks.** Daily and weekly saved prompts with pause/resume/end, manual runs, and review.
 - **Context management.** Prompt budgeting, tool-result eviction, restore handles, and long-document support.
 - **Skills.** Reusable procedures installed from local files or plugin packages.
 - **Plugins.** Versioned packages with permissions, SHA-256 verification, rollback, a catalog, and optional MCP bundles.
@@ -114,6 +115,7 @@ Details, prerequisites, and the validation workflow:
 | Skills | [docs/skills.md](docs/skills.md) |
 | PhotoCraft MCP | [docs/photocraft.md](docs/photocraft.md) |
 | Architecture and context | [docs/architecture.md](docs/architecture.md) |
+| Automation tasks | [docs/automation.md](docs/automation.md) |
 | UI, chats, themes | [docs/ui.md](docs/ui.md) |
 | Security and approvals | [docs/security.md](docs/security.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |

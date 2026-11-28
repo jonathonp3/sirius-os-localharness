@@ -2,6 +2,7 @@
 
 mod agent;
 mod approval;
+mod automations;
 mod governor;
 mod llm;
 mod mcp;

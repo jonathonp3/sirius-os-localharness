@@ -185,7 +185,34 @@ body.sidebar-open { padding-left:350px; }
 #model-install-status { color:var(--muted); font-size:13px; margin-top:6px; white-space:pre-wrap; }
 
 
-#mcp-toggle { background:var(--panel); color:var(--text); border:1px solid var(--border); padding:0 10px; font-size:13px; }
+#mcp-toggle, #automation-toggle { background:var(--panel); color:var(--text); border:1px solid var(--border); padding:0 10px; font-size:13px; }
+#automation-panel { position:fixed; top:58px; right:16px; width:min(460px,92vw); max-height:calc(100vh - 76px); z-index:1330; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; box-shadow:0 16px 45px rgba(0,0,0,.35); }
+#automation-panel[hidden] { display:none; }
+.automation-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.automation-head strong { font-size:16px; }
+#automation-close { background:var(--bg); color:var(--text); border:1px solid var(--border); min-width:30px; min-height:28px; padding:0 8px; font-size:17px; }
+#automation-new { background:var(--accent); color:#08111f; border:0; border-radius:5px; min-height:28px; padding:0 9px; font-size:12px; }
+.automation-tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:7px; }
+.automation-tabs button { background:var(--bg); color:var(--muted); border:1px solid var(--border); border-radius:12px; min-height:24px; padding:0 8px; font-size:12px; }
+.automation-tabs button.active { color:var(--accent); border-color:var(--accent); }
+#automation-search { width:100%; box-sizing:border-box; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:6px 8px; font-size:13px; margin-bottom:8px; }
+.automation-card { border:1px solid var(--border); border-radius:7px; padding:8px; margin-bottom:6px; background:var(--bg); }
+.automation-title { color:var(--text); font-size:14px; font-weight:600; }
+.automation-meta { color:var(--muted); font-size:12px; margin-top:3px; }
+.automation-result { color:var(--muted); font-size:12px; margin-top:5px; max-height:70px; overflow:auto; white-space:pre-wrap; }
+.automation-actions { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+.automation-actions button { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:5px; min-height:24px; padding:0 7px; font-size:11px; }
+.automation-actions button[data-action="delete"] { color:#e0a030; }
+.automation-empty { color:var(--muted); font-size:13px; padding:8px 2px; }
+.automation-review { border-top:1px solid var(--border); margin-top:10px; padding-top:8px; }
+.automation-review-title { font-size:13px; font-weight:600; margin-bottom:5px; }
+.automation-review-row { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; padding:3px 0; }
+#automation-form { border-top:1px solid var(--border); margin-top:8px; padding-top:8px; display:flex; flex-direction:column; gap:6px; }
+#automation-form[hidden] { display:none; }
+#automation-form input, #automation-form select, #automation-form textarea { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:6px 7px; font-size:13px; }
+#automation-form textarea { min-height:70px; resize:vertical; }
+#automation-form-actions { display:flex; gap:5px; }
+#automation-form-actions button { min-height:28px; font-size:12px; }
 #mcp-panel { position:fixed; top:58px; right:16px; width:min(420px,92vw); max-height:calc(100vh - 76px); z-index:1300; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; box-shadow:0 16px 45px rgba(0,0,0,.35); }
 #mcp-panel[hidden] { display:none; }
 .mcp-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:7px; }
@@ -271,6 +298,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
 <button id="history-toggle" type="button" title="Show or hide workspaces and chats">☰ Chats</button>
 <button id="model-toggle" type="button" title="Switch installed models">Model</button>
 <button id="mcp-toggle" type="button" title="MCP server status">MCP</button>
+<button id="automation-toggle" type="button" title="Automation tasks">Tasks</button>
 <select id="theme" title="Theme">
 <option value="xterm">Xterm</option>
 <option value="solarized">Solarized</option>
@@ -378,6 +406,33 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
   </div>
   <div id="artifact-meta"></div>
 </aside>
+<aside id="automation-panel" hidden>
+  <div class="automation-head">
+    <strong>Automation tasks</strong>
+    <div style="display:flex;gap:5px"><button id="automation-new" type="button">+ New</button><button id="automation-close" type="button" title="Close automation tasks">×</button></div>
+  </div>
+  <div class="automation-tabs">
+    <button type="button" data-tab="enabled" class="active">Enabled</button>
+    <button type="button" data-tab="paused">Paused</button>
+    <button type="button" data-tab="ended">Ended</button>
+    <button type="button" data-tab="all">All</button>
+  </div>
+  <input id="automation-search" type="search" placeholder="Search automation tasks" autocomplete="off">
+  <div id="automation-list"></div>
+  <div class="automation-review">
+    <div class="automation-review-title">Automation Tasks Review</div>
+    <div class="automation-review-row"><span>Daily</span><span id="automation-daily">0</span></div>
+    <div class="automation-review-row"><span>Weekly</span><span id="automation-weekly">0</span></div>
+  </div>
+  <form id="automation-form" hidden>
+    <input id="automation-title" type="text" placeholder="Task title" required>
+    <textarea id="automation-prompt" placeholder="Prompt to run" required></textarea>
+    <select id="automation-frequency"><option value="daily">Daily</option><option value="weekly">Weekly</option></select>
+    <input id="automation-time" type="time" value="09:00" required>
+    <select id="automation-weekday"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="7">Sunday</option></select>
+    <div id="automation-form-actions"><button type="submit">Create task</button><button type="button" id="automation-cancel">Cancel</button></div>
+  </form>
+</aside>
 <aside id="mcp-panel" hidden>
   <div class="mcp-head">
     <strong>MCP Servers</strong>
@@ -440,6 +495,21 @@ const artifactList = document.getElementById('artifact-list');
 const artifactImage = document.getElementById('artifact-image');
 const artifactCode = document.getElementById('artifact-code');
 const artifactMeta = document.getElementById('artifact-meta');
+const automationToggle = document.getElementById('automation-toggle');
+const automationPanel = document.getElementById('automation-panel');
+const automationClose = document.getElementById('automation-close');
+const automationNew = document.getElementById('automation-new');
+const automationSearch = document.getElementById('automation-search');
+const automationList = document.getElementById('automation-list');
+const automationDaily = document.getElementById('automation-daily');
+const automationWeekly = document.getElementById('automation-weekly');
+const automationForm = document.getElementById('automation-form');
+const automationTitle = document.getElementById('automation-title');
+const automationPrompt = document.getElementById('automation-prompt');
+const automationFrequency = document.getElementById('automation-frequency');
+const automationTime = document.getElementById('automation-time');
+const automationWeekday = document.getElementById('automation-weekday');
+const automationCancel = document.getElementById('automation-cancel');
 const mcpToggle = document.getElementById('mcp-toggle');
 const mcpPanel = document.getElementById('mcp-panel');
 const mcpClose = document.getElementById('mcp-close');
@@ -2554,6 +2624,165 @@ function renderInlineArtifacts(element, rawText) {
   }
   element.appendChild(row);
 }
+
+let automationTasks = [];
+let automationTab = 'enabled';
+
+function automationStatus(task) {
+  if (task.ended) return 'ended';
+  if (task.paused) return 'paused';
+  return 'enabled';
+}
+
+function automationSchedule(task) {
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  if (task.frequency === 'weekly') return 'Weekly · ' + (days[(task.weekday || 1) - 1] || 'Monday') + ' at ' + task.time;
+  return 'Daily at ' + task.time;
+}
+
+function renderAutomations() {
+  const query = automationSearch.value.trim().toLowerCase();
+  const filtered = automationTasks.filter((task) => {
+    if (automationTab !== 'all' && automationStatus(task) !== automationTab) return false;
+    if (!query) return true;
+    return (task.title + ' ' + task.prompt).toLowerCase().includes(query);
+  });
+  automationList.innerHTML = '';
+  if (!filtered.length) {
+    const empty = document.createElement('div');
+    empty.className = 'automation-empty';
+    empty.textContent = automationTab === 'enabled' ? 'No active automation tasks' : 'No automation tasks';
+    automationList.appendChild(empty);
+  } else {
+    for (const task of filtered) {
+      const card = document.createElement('div');
+      card.className = 'automation-card';
+      const title = document.createElement('div');
+      title.className = 'automation-title';
+      title.textContent = task.title;
+      const meta = document.createElement('div');
+      meta.className = 'automation-meta';
+      const when = task.next_run ? new Date(task.next_run * 1000).toLocaleString() : 'not scheduled';
+      meta.textContent = automationStatus(task) + ' · ' + automationSchedule(task) + ' · next: ' + when;
+      card.append(title, meta);
+      if (task.last_result) {
+        const result = document.createElement('div');
+        result.className = 'automation-result';
+        result.textContent = task.last_result;
+        card.appendChild(result);
+      }
+      const actions = document.createElement('div');
+      actions.className = 'automation-actions';
+      const addAction = (label, action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.dataset.action = action;
+        button.addEventListener('click', () => automationAction(task.id, action));
+        actions.appendChild(button);
+      };
+      if (task.paused) addAction('Resume', 'resume');
+      else if (!task.ended) addAction('Pause', 'pause');
+      if (!task.ended) addAction('End', 'end');
+      addAction('Run now', 'run');
+      addAction('Delete', 'delete');
+      card.appendChild(actions);
+      automationList.appendChild(card);
+    }
+  }
+  const active = automationTasks.filter((task) => !task.paused && !task.ended);
+  automationDaily.textContent = String(active.filter((task) => task.frequency === 'daily').length);
+  automationWeekly.textContent = String(active.filter((task) => task.frequency === 'weekly').length);
+}
+
+async function refreshAutomations() {
+  if (!token) return;
+  try {
+    const response = await fetch('/api/automations?token=' + encodeURIComponent(token));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      automationList.textContent = data.error || ('HTTP ' + response.status);
+      return;
+    }
+    automationTasks = data.tasks || [];
+    renderAutomations();
+  } catch (error) {
+    automationList.textContent = String(error);
+  }
+}
+
+async function createAutomation(event) {
+  event.preventDefault();
+  const payload = {
+    title: automationTitle.value.trim(),
+    prompt: automationPrompt.value.trim(),
+    frequency: automationFrequency.value,
+    time: automationTime.value,
+    weekday: automationFrequency.value === 'weekly' ? Number(automationWeekday.value) : null,
+  };
+  if (!payload.title || !payload.prompt) return;
+  try {
+    const response = await fetch('/api/automations?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      add('error', data.error || ('HTTP ' + response.status));
+      return;
+    }
+    automationForm.hidden = true;
+    automationTitle.value = '';
+    automationPrompt.value = '';
+    await refreshAutomations();
+    add('meta', 'automation created: ' + payload.title);
+  } catch (error) {
+    add('error', String(error));
+  }
+}
+
+async function automationAction(id, action) {
+  if (action === 'delete' && !confirm('Delete this automation task?')) return;
+  try {
+    const response = await fetch('/api/automations/' + encodeURIComponent(id) + '?token=' + encodeURIComponent(token), {
+      method: action === 'delete' ? 'DELETE' : 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: action === 'delete' ? undefined : JSON.stringify({ action }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      add('error', data.error || ('HTTP ' + response.status));
+      return;
+    }
+    if (action === 'run') add('meta', 'automation started');
+    await refreshAutomations();
+  } catch (error) {
+    add('error', String(error));
+  }
+}
+
+automationToggle.addEventListener('click', () => {
+  automationPanel.hidden = !automationPanel.hidden;
+  if (!automationPanel.hidden) {
+    modelPanel.hidden = true;
+    mcpPanel.hidden = true;
+    refreshAutomations();
+  }
+});
+automationClose.addEventListener('click', () => { automationPanel.hidden = true; });
+automationNew.addEventListener('click', () => { automationForm.hidden = !automationForm.hidden; if (!automationForm.hidden) automationTitle.focus(); });
+automationCancel.addEventListener('click', () => { automationForm.hidden = true; });
+automationForm.addEventListener('submit', createAutomation);
+automationSearch.addEventListener('input', renderAutomations);
+automationFrequency.addEventListener('change', () => { automationWeekday.hidden = automationFrequency.value !== 'weekly'; });
+document.querySelectorAll('.automation-tabs button').forEach((button) => {
+  button.addEventListener('click', () => {
+    automationTab = button.dataset.tab;
+    document.querySelectorAll('.automation-tabs button').forEach((other) => other.classList.toggle('active', other === button));
+    renderAutomations();
+  });
+});
 
 artifactClose.addEventListener('click', () => { artifactPanel.hidden = true; });
 

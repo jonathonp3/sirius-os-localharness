@@ -16,12 +16,14 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde::Deserialize;
+use chrono::Local;
 use serde_json::{json, Value};
 use tokio::sync::{Mutex, Semaphore, mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::agent::{self, EventSink};
 use crate::approval::{self, ApprovalRequest, Approver};
+use crate::automations::{self, AutomationTask};
 use crate::session::{self, Session};
 use crate::providers;
 use crate::workspaces;
@@ -48,6 +50,7 @@ struct AppState {
     session_lock: Arc<Mutex<()>>,
     active_sessions: Arc<StdMutex<HashSet<String>>>,
     mcp_failures: Arc<Vec<crate::mcp::McpFailure>>,
+    automations: Arc<Mutex<Vec<AutomationTask>>>,
 }
 
 fn running_provider(config: &agent::Config) -> &'static str {
@@ -77,6 +80,8 @@ pub async fn run(
         Some(token) => token,
         None => random_token()?,
     };
+    let automation_path = data_dir.join("automations.json");
+    let automation_tasks = automations::load(&automation_path).await.unwrap_or_default();
     let state = Arc::new(AppState {
         config,
         data_dir,
@@ -90,7 +95,9 @@ pub async fn run(
         session_lock: Arc::new(Mutex::new(())),
         active_sessions: Arc::new(StdMutex::new(HashSet::new())),
         mcp_failures,
+        automations: Arc::new(Mutex::new(automation_tasks)),
     });
+    tokio::spawn(automation_loop(state.clone()));
     let app = Router::new()
         .route("/", get(index))
         .route("/assets/{file}", get(asset))
@@ -110,6 +117,8 @@ pub async fn run(
         .route("/api/model-catalog/cancel", post(model_catalog_cancel))
         .route("/api/mcp/status", get(mcp_status))
         .route("/api/skills", get(list_skills))
+        .route("/api/automations", get(list_automations).post(create_automation))
+        .route("/api/automations/{id}", axum::routing::delete(delete_automation).patch(update_automation))
         .route("/api/artifact", get(artifact))
         .route("/api/sessions", get(list_sessions))
         .route("/api/sessions/export", get(export_sessions))
@@ -1252,6 +1261,200 @@ async fn artifact(
         HeaderValue::from_static("nosniff"),
     );
     (response_headers, bytes).into_response()
+}
+
+fn automations_path(state: &AppState) -> PathBuf {
+    state.data_dir.join("automations.json")
+}
+
+async fn save_automations(state: &AppState) -> Result<()> {
+    let tasks = state.automations.lock().await.clone();
+    automations::save(&automations_path(state), &tasks).await
+}
+
+async fn list_automations(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let tasks = state.automations.lock().await.clone();
+    Json(json!({ "tasks": tasks })).into_response()
+}
+
+#[derive(Deserialize)]
+struct AutomationCreateBody {
+    title: String,
+    prompt: String,
+    frequency: String,
+    time: String,
+    weekday: Option<u32>,
+}
+
+async fn create_automation(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<AutomationCreateBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let task = match automations::create(
+        body.title,
+        body.prompt,
+        body.frequency,
+        body.time,
+        body.weekday,
+    ) {
+        Ok(task) => task,
+        Err(error) => return (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("{error:#}") }))).into_response(),
+    };
+    state.automations.lock().await.push(task.clone());
+    if let Err(error) = save_automations(&state).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response();
+    }
+    Json(json!({ "task": task })).into_response()
+}
+
+#[derive(Deserialize)]
+struct AutomationActionBody {
+    action: String,
+}
+
+async fn update_automation(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    Json(body): Json<AutomationActionBody>,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let action = body.action.as_str();
+    let mut run_task = None;
+    {
+        let mut tasks = state.automations.lock().await;
+        let Some(task) = tasks.iter_mut().find(|task| task.id == id) else {
+            return (StatusCode::NOT_FOUND, Json(json!({ "error": "automation task not found" }))).into_response();
+        };
+        match action {
+            "pause" => {
+                task.paused = true;
+                task.next_run = None;
+            }
+            "resume" => {
+                task.paused = false;
+                task.ended = false;
+                task.next_run = automations::next_run_at(&task.frequency, &task.time, task.weekday, Local::now()).ok();
+            }
+            "end" => {
+                task.ended = true;
+                task.paused = false;
+                task.next_run = None;
+            }
+            "run" => run_task = Some(task.clone()),
+            other => {
+                return (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("unknown automation action `{other}`") }))).into_response();
+            }
+        }
+    }
+    if let Err(error) = save_automations(&state).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response();
+    }
+    if let Some(task) = run_task {
+        tokio::spawn(run_automation(state.clone(), task));
+    }
+    Json(json!({ "ok": true })).into_response()
+}
+
+async fn delete_automation(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &query, &headers) {
+        return unauthorized();
+    }
+    let mut tasks = state.automations.lock().await;
+    let before = tasks.len();
+    tasks.retain(|task| task.id != id);
+    if tasks.len() == before {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": "automation task not found" }))).into_response();
+    }
+    drop(tasks);
+    if let Err(error) = save_automations(&state).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{error:#}") }))).into_response();
+    }
+    Json(json!({ "ok": true })).into_response()
+}
+
+struct AutomationSink;
+
+impl EventSink for AutomationSink {}
+
+async fn run_automation(state: Arc<AppState>, task: AutomationTask) {
+    let _permit = match state.slots.acquire().await {
+        Ok(permit) => permit,
+        Err(_) => return,
+    };
+    let result = async {
+        let session = Session::create(&state.data_dir, &state.config.model).await?;
+        let mut sink = AutomationSink;
+        let outcome = agent::run(state.config.clone(), &session, &task.prompt, Vec::new(), &mut sink).await?;
+        Ok::<String, anyhow::Error>(outcome.content)
+    }
+    .await;
+    let text = match result {
+        Ok(text) => text,
+        Err(error) => format!("automation error: {error:#}"),
+    };
+    let preview: String = text.chars().take(2000).collect();
+    let mut tasks = state.automations.lock().await;
+    if let Some(entry) = tasks.iter_mut().find(|entry| entry.id == task.id) {
+        entry.last_result = Some(preview);
+        entry.last_run = Some(Local::now().timestamp());
+    }
+    drop(tasks);
+    let _ = save_automations(&state).await;
+}
+
+async fn automation_loop(state: Arc<AppState>) {
+    let mut interval = tokio::time::interval(Duration::from_secs(30));
+    loop {
+        interval.tick().await;
+        let now = Local::now().timestamp();
+        let mut due = Vec::new();
+        {
+            let mut tasks = state.automations.lock().await;
+            for task in tasks.iter_mut() {
+                if task.paused || task.ended || task.next_run.is_none() {
+                    continue;
+                }
+                if task.next_run.unwrap_or(i64::MAX) <= now {
+                    task.last_run = Some(now);
+                    task.next_run = automations::next_run_at(
+                        &task.frequency,
+                        &task.time,
+                        task.weekday,
+                        Local::now(),
+                    )
+                    .ok();
+                    due.push(task.clone());
+                }
+            }
+        }
+        if !due.is_empty() {
+            let _ = save_automations(&state).await;
+            for task in due {
+                tokio::spawn(run_automation(state.clone(), task));
+            }
+        }
+    }
 }
 
 #[derive(Deserialize)]
