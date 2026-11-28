@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use anyhow::{bail, Context, Result};
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header::{AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_TYPE}};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE}};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{delete, get, post};
@@ -1124,7 +1124,19 @@ async fn chat(
         let _ = &guard;
         Ok::<_, Infallible>(to_event(event))
     });
-    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+    let mut response = Sse::new(stream)
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_millis(250))
+                .text("keep-alive"),
+        )
+        .into_response();
+    response.headers_mut().insert(
+        axum::http::HeaderName::from_static("x-accel-buffering"),
+        HeaderValue::from_static("no"),
+    );
+    response.headers_mut().insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    response
 }
 
 async fn approval(
