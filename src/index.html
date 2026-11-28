@@ -209,6 +209,13 @@ body.sidebar-open { padding-left:350px; }
 .automation-review-row { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; padding:3px 0; }
 #automation-form { border-top:1px solid var(--border); margin-top:8px; padding-top:8px; display:flex; flex-direction:column; gap:6px; }
 #automation-form[hidden] { display:none; }
+#app-confirm { position:fixed; inset:0; z-index:2000; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.45); padding:20px; }
+#app-confirm[hidden] { display:none; }
+.app-confirm-box { width:min(380px,92vw); background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+#app-confirm-message { color:var(--text); font-size:14px; line-height:1.45; white-space:pre-wrap; margin-bottom:14px; }
+#app-confirm-actions { display:flex; justify-content:flex-end; gap:8px; }
+#app-confirm-cancel { background:var(--bg); color:var(--text); border:1px solid var(--border); }
+#app-confirm-ok { background:var(--accent); color:#08111f; }
 .automation-label { color:var(--muted); font-size:11px; margin-bottom:-3px; }
 .automation-hint { color:var(--muted); font-size:11px; }
 #automation-form input, #automation-form select, #automation-form textarea { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:6px 7px; font-size:13px; }
@@ -1535,8 +1542,35 @@ async function patchSession(id, patch) {
   }
 }
 
+function appConfirm(message, okLabel = 'Delete') {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('app-confirm');
+    const messageEl = document.getElementById('app-confirm-message');
+    const ok = document.getElementById('app-confirm-ok');
+    const cancel = document.getElementById('app-confirm-cancel');
+    messageEl.textContent = message;
+    ok.textContent = okLabel;
+    dialog.hidden = false;
+    ok.focus();
+    const finish = (value) => {
+      dialog.hidden = true;
+      ok.onclick = null;
+      cancel.onclick = null;
+      document.removeEventListener('keydown', onKey);
+      resolve(value);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+      else if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+    };
+    ok.onclick = () => finish(true);
+    cancel.onclick = () => finish(false);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 async function deleteSession(id) {
-  if (!confirm('Delete this chat? It will be moved to the session trash.')) return;
+  if (!(await appConfirm('Delete this chat?\n\nIt will be moved to the session trash.'))) return;
   try {
     const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '?token=' + encodeURIComponent(token), { method: 'DELETE' });
     if (response.status === 409) {
@@ -1575,7 +1609,7 @@ async function deleteSession(id) {
 
 async function deleteSelected() {
   if (!selectedSessions.size) return;
-  if (!confirm('Delete ' + selectedSessions.size + ' selected chat(s)? They will be moved to the session trash.')) return;
+  if (!(await appConfirm('Delete ' + selectedSessions.size + ' selected chat(s)?\n\nThey will be moved to the session trash.'))) return;
   const ids = Array.from(selectedSessions);
   const failed = [];
   for (const id of ids) {
@@ -3105,5 +3139,14 @@ promptEl.addEventListener('keydown', (event) => {
   }
 });
 </script>
+<div id="app-confirm" hidden>
+  <div class="app-confirm-box" role="dialog" aria-modal="true" aria-labelledby="app-confirm-message">
+    <div id="app-confirm-message"></div>
+    <div id="app-confirm-actions">
+      <button id="app-confirm-cancel" type="button">Cancel</button>
+      <button id="app-confirm-ok" type="button">Delete</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
