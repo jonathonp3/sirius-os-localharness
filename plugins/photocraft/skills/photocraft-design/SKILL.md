@@ -8,6 +8,25 @@ description: Use for image creation, icon design, composition, or visual verific
 
 Use this skill for PhotoCraft icon or design work.
 
+## Default output
+
+Unless the user asks for a layered master, produce:
+
+```text
+design.spec.json   editable construction source
+design.png         lossless flat image for display
+```
+
+The PNG is flat; editability comes from the spec, not the PNG. PSD or layered
+TIFF is exported only when explicitly requested.
+
+## Unsupported text effects
+
+The PhotoCraft text schema supports a fill color, not a text stroke or outline.
+Do not claim that a requested text outline was rendered. Approximate only when
+the user agrees, for example with duplicated offset text layers; otherwise report
+the limitation.
+
 ## Image creation routing
 
 When the user asks to "create an image", "make an icon", "design a logo", or
