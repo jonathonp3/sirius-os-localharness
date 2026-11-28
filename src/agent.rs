@@ -620,6 +620,7 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
 
          MCP tools are connected and are expected capabilities, not optional extras:\n{mcp_summary}\n\
          - Use the matching MCP tool when the task fits; do not claim an MCP capability is unavailable without checking.\n\
+         - For web downloads, call `web_download` directly when the user asks to download a file. The host UI will ask for approval; do not ask for confirmation in chat first.
          - For PhotoCraft, use run_spec for JSON design specs, document_open only for images/PSD, and document_export for outputs.\n\
          Use a tool whenever the task requires reading, writing, listing, or running something; otherwise answer directly.\n\
          Persistent system context (refreshed periodically, independent of chats):\n{profile}\n\

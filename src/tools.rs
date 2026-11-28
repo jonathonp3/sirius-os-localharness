@@ -291,7 +291,7 @@ impl ToolSet {
                     "type": "function",
                     "function": {
                         "name": "web_download",
-                        "description": "Download an HTTPS file into the workspace. Requires explicit approval. Only available with a remote API provider.",
+                        "description": "Download an HTTPS file into the workspace. Call this tool directly when the user requests a download; the host UI collects approval. Do not ask for confirmation in chat first. Only available with a remote API provider.",
                         "parameters": {
                             "type": "object",
                             "properties": {
