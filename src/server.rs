@@ -1555,6 +1555,7 @@ enum SseEvent {
     Session(String),
     Queued { position: usize, slots: usize },
     Token(String),
+    Reasoning(String),
     Step(usize),
     ToolCall { name: String, arguments: String },
     ToolResult { chars: usize, preview: String },
@@ -1571,6 +1572,7 @@ fn to_event(event: SseEvent) -> Event {
             .data(json!({ "session": session }).to_string()),
         SseEvent::Queued { position, slots } => Event::default().event("queued").data(json!({ "position": position, "slots": slots }).to_string()),
         SseEvent::Token(text) => Event::default().event("token").data(json!({ "text": text }).to_string()),
+        SseEvent::Reasoning(text) => Event::default().event("reasoning").data(json!({ "text": text }).to_string()),
         SseEvent::Step(step) => Event::default().event("step").data(json!({ "step": step }).to_string()),
         SseEvent::ToolCall { name, arguments } => Event::default()
             .event("tool_call")
@@ -1687,6 +1689,10 @@ impl EventSink for ChannelSink {
 
     fn token(&mut self, text: &str) {
         let _ = self.tx.send(SseEvent::Token(text.to_string()));
+    }
+
+    fn reasoning(&mut self, text: &str) {
+        let _ = self.tx.send(SseEvent::Reasoning(text.to_string()));
     }
 
     fn tool_call(&mut self, name: &str, arguments: &str) {

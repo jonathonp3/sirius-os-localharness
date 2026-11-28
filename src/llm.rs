@@ -1,6 +1,6 @@
 //! Minimal streaming client for llama.cpp's OpenAI-compatible chat endpoint.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{bail, Context, Result};
@@ -92,9 +92,24 @@ pub struct Client {
     remote: bool,
 }
 
+static SHARED_HTTP: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn shared_http() -> Result<reqwest::Client> {
+    if let Some(client) = SHARED_HTTP.get() {
+        return Ok(client.clone());
+    }
+    let client = reqwest::Client::builder()
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .tcp_keepalive(std::time::Duration::from_secs(60))
+        .build()
+        .context("building HTTP client")?;
+    let _ = SHARED_HTTP.set(client.clone());
+    Ok(client)
+}
+
 impl Client {
     pub fn new(endpoint: &str, model: &str, api_key: Option<&str>, remote: bool) -> Result<Self> {
-        let http = reqwest::Client::builder().build().context("building HTTP client")?;
+        let http = shared_http()?;
         Ok(Self {
             http,
             endpoint: endpoint.trim_end_matches('/').to_string(),
@@ -150,7 +165,7 @@ impl Client {
         temperature: f32,
         think: bool,
         cancel: Option<&Arc<AtomicBool>>,
-        on_delta: &mut (dyn FnMut(&str) + Send),
+        on_delta: &mut (dyn FnMut(bool, &str) + Send),
     ) -> Result<Turn> {
         if is_cancelled(cancel) {
             bail!("cancelled");
@@ -225,10 +240,19 @@ impl Client {
 
                 let Some(choice) = value.get("choices").and_then(|choices| choices.get(0)) else { continue };
                 if let Some(delta) = choice.get("delta") {
+                    if let Some(text) = delta
+                        .get("reasoning_content")
+                        .or_else(|| delta.get("reasoning"))
+                        .and_then(Value::as_str)
+                    {
+                        if !text.is_empty() {
+                            on_delta(true, text);
+                        }
+                    }
                     if let Some(text) = delta.get("content").and_then(Value::as_str) {
                         if !text.is_empty() {
                             turn.content.push_str(text);
-                            on_delta(text);
+                            on_delta(false, text);
                         }
                     }
                     if let Some(items) = delta.get("tool_calls").and_then(Value::as_array) {

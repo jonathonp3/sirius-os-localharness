@@ -24,6 +24,7 @@ pub trait EventSink: Send {
     fn notice(&mut self, _text: &str) {}
     fn step(&mut self, _step: usize) {}
     fn token(&mut self, _text: &str) {}
+    fn reasoning(&mut self, _text: &str) {}
     fn tool_call(&mut self, _name: &str, _arguments: &str) {}
     fn tool_result(&mut self, _result: &str) {}
     fn usage(&mut self, _prompt: u64, _completion: u64, _cached: u64) {}
@@ -191,9 +192,11 @@ pub async fn run(
             let mut context_retry = false;
             let turn = loop {
                 let result = {
-                    let mut on_token = |text: &str| sink.token(text);
+                    let mut on_delta = |reasoning: bool, text: &str| {
+                        if reasoning { sink.reasoning(text) } else { sink.token(text) }
+                    };
                     client
-                        .complete(&messages, &definitions, config.max_tokens, config.temperature, config.think, config.cancel.as_ref(), &mut on_token)
+                        .complete(&messages, &definitions, config.max_tokens, config.temperature, config.think, config.cancel.as_ref(), &mut on_delta)
                         .await
                 };
                 match result {
@@ -382,7 +385,7 @@ async fn compact(
 
     let system = "You compress conversation history for a local coding agent. Summarize the transcript below. Preserve facts, numbers, file paths, decisions, and unresolved tasks. Write at most 120 words. Output only the summary.";
     let request = vec![Message::system(system), Message::user(transcript)];
-    let mut ignore = |_text: &str| {};
+    let mut ignore = |_reasoning: bool, _text: &str| {};
     let turn = client
         .complete(&request, &[], 200, 0.0, false, config.cancel.as_ref(), &mut ignore)
         .await?;
@@ -607,7 +610,8 @@ fn system_prompt(workspace: &std::path::Path, tools: &[String], depth: usize) ->
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let skills = load_skills(workspace);
+    let mut skills = load_skills(workspace);
+    skills.sort_by(|a, b| a.0.cmp(&b.0));
     let skill_summary = skills
         .iter()
         .map(|(name, description)| format!("- {name}: {description}"))

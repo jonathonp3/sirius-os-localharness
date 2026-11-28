@@ -279,6 +279,9 @@ button:disabled { opacity:.5; cursor:default; }
 #stop:not(:disabled) { background:#2563eb; color:#ffffff; border:1px solid #1d4ed8; }
 textarea::placeholder { color:var(--muted); opacity:1; }
 #stop { background:#3a3a3a; color:var(--text); }
+.reasoning-block { align-self:flex-start; width:min(760px,92%); color:var(--muted); border:1px solid var(--border); border-radius:8px; padding:8px 10px; background:var(--panel); font-size:13px; }
+.reasoning-block summary { cursor:pointer; color:var(--muted); font-weight:600; }
+.reasoning-text { white-space:pre-wrap; margin-top:6px; color:var(--text); max-height:240px; overflow:auto; }
 .assistant pre { background:var(--code-bg); border:1px solid var(--border); border-radius:6px; padding:8px; overflow:auto; white-space:pre; }
 .assistant code { font-family: ui-monospace, monospace; background:var(--code-bg); color:var(--code-text); padding:1px 4px; border-radius:4px; }
 .assistant pre code { background:none; padding:0; }
@@ -573,6 +576,8 @@ let queuedPrompts = [];
 let providerState = null;
 
 let assistantEl = null;
+let reasoningEl = null;
+let firstToken = false;
 let openTool = null;
 let finished = false;
 
@@ -2948,7 +2953,18 @@ function handleBlock(block) {
 
   if (event === 'session') {
     currentSessionId = payload.session;
+  } else if (event === 'reasoning') {
+    if (!reasoningEl) {
+      reasoningEl = document.createElement('details');
+      reasoningEl.className = 'reasoning-block';
+      reasoningEl.open = true;
+      reasoningEl.innerHTML = '<summary>Reasoning</summary><div class="reasoning-text"></div>';
+      log.appendChild(reasoningEl);
+    }
+    reasoningEl.querySelector('.reasoning-text').textContent += payload.text;
+    if (!firstToken) setStatus('reasoning');
   } else if (event === 'token') {
+    if (!firstToken) { firstToken = true; setStatus('streaming'); }
     if (!assistantEl) assistantEl = add('assistant');
     assistantEl.dataset.raw = (assistantEl.dataset.raw || '') + payload.text;
     assistantEl.innerHTML = renderMarkdown(assistantEl.dataset.raw);
@@ -2960,6 +2976,7 @@ function handleBlock(block) {
   } else if (event === 'tool_call') {
     openTool = addToolCard(payload.name, payload.arguments);
     assistantEl = null;
+    reasoningEl = null;
   } else if (event === 'tool_result') {
     finishToolCard(openTool, payload.chars, payload.preview);
     openTool = null;
@@ -2977,12 +2994,14 @@ function handleBlock(block) {
     add('meta', 'session ' + payload.session + ' · ' + payload.prompt_tokens + '→' + payload.completion_tokens + ' tokens' + cached);
     setStatus('ready');
     assistantEl = null;
+    reasoningEl = null;
     openTool = null;
     if (!historyPanel.hidden) refreshSessions();
   } else if (event === 'error') {
     add('error', payload.message);
     setStatus('error', true);
     assistantEl = null;
+    reasoningEl = null;
     openTool = null;
   }
   log.scrollTop = log.scrollHeight;
@@ -3063,7 +3082,9 @@ async function send() {
   stopEl.disabled = false;
   controller = new AbortController();
   sendEl.disabled = false;
-  setStatus('thinking');
+  firstToken = false;
+  reasoningEl = null;
+  setStatus('waiting for first token');
   assistantEl = null;
   openTool = null;
   finished = false;
