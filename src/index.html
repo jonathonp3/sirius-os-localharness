@@ -425,6 +425,7 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
     <div class="automation-review-row"><span>Weekly</span><span id="automation-weekly">0</span></div>
   </div>
   <form id="automation-form" hidden>
+    <select id="automation-kind"><option value="prompt">Prompt task</option><option value="health">System health</option></select>
     <input id="automation-title" type="text" placeholder="Task title" required>
     <textarea id="automation-prompt" placeholder="Prompt to run" required></textarea>
     <select id="automation-frequency"><option value="daily">Daily</option><option value="weekly">Weekly</option></select>
@@ -504,6 +505,7 @@ const automationList = document.getElementById('automation-list');
 const automationDaily = document.getElementById('automation-daily');
 const automationWeekly = document.getElementById('automation-weekly');
 const automationForm = document.getElementById('automation-form');
+const automationKind = document.getElementById('automation-kind');
 const automationTitle = document.getElementById('automation-title');
 const automationPrompt = document.getElementById('automation-prompt');
 const automationFrequency = document.getElementById('automation-frequency');
@@ -2729,9 +2731,10 @@ async function createAutomation(event) {
     prompt: automationPrompt.value.trim(),
     frequency: automationFrequency.value,
     time: automationTime.value,
+    kind: automationKind.value,
     weekday: automationFrequency.value === 'weekly' ? Number(automationWeekday.value) : null,
   };
-  if (!payload.title || !payload.prompt) return;
+  if (!payload.title || (automationKind.value !== 'health' && !payload.prompt)) return;
   try {
     const response = await fetch('/api/automations?token=' + encodeURIComponent(token), {
       method: 'POST',
@@ -2746,6 +2749,7 @@ async function createAutomation(event) {
     automationForm.hidden = true;
     automationTitle.value = '';
     automationPrompt.value = '';
+    automationKind.value = 'prompt';
     await refreshAutomations();
     add('meta', 'automation created: ' + payload.title);
   } catch (error) {
@@ -2787,6 +2791,12 @@ automationCancel.addEventListener('click', () => { automationForm.hidden = true;
 automationForm.addEventListener('submit', createAutomation);
 automationSearch.addEventListener('input', renderAutomations);
 automationFrequency.addEventListener('change', () => { automationWeekday.hidden = automationFrequency.value !== 'weekly'; });
+automationKind.addEventListener('change', () => {
+  const health = automationKind.value === 'health';
+  automationPrompt.hidden = health;
+  automationPrompt.required = !health;
+  if (health && !automationTitle.value.trim()) automationTitle.value = 'Health Check';
+});
 document.querySelectorAll('.automation-tabs button').forEach((button) => {
   button.addEventListener('click', () => {
     automationTab = button.dataset.tab;

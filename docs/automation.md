@@ -20,6 +20,15 @@ Weekly  0
 
 The panel is hidden until opened.
 
+## Task types
+
+- **Prompt task** — runs a saved prompt through the model.
+- **System health** — runs `local-harness-health` directly, with no model or
+  tool-approval dependency, and reports `HEALTH: HEALTHY | DEGRADED | FAILED`
+  followed by the snapshot.
+
+Choose **System health** in the New form for reliable scheduled health reports.
+
 ## Create a task
 
 **New** opens a form with:
@@ -61,14 +70,17 @@ also shows a short result preview.
 When a task is due, the scheduler:
 
 1. recalculates its next run
-2. acquires a model slot
+2. acquires a slot
 3. creates a session
-4. runs the saved prompt through the normal agent loop
+4. runs either the saved prompt or the health snapshot
 5. stores a short result preview on the task
 
-Automation runs respect the configured policy and approval settings. In the
+Prompt tasks respect the configured policy and approval settings. In the
 service, human approvals are unavailable, so mutating actions that require
 approval are denied unless the service was started with auto-approval.
+
+System health tasks execute the fixed snapshot command directly and do not use
+model tool selection or approvals.
 
 ## Storage
 

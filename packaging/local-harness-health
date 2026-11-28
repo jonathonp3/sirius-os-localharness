@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Read-only host health snapshot for Local Harness automation.
+set +e
+echo "== services =="
+systemctl --user is-active llama-server local-harness-flatpak 2>&1
+echo "== podman =="
+podman ps --format '{{.ID}} {{.Names}} {{.Status}}' 2>&1
+echo "== distrobox =="
+distrobox list 2>&1
+echo "== disk =="
+df -h /var/home 2>&1
+echo "== rpm-ostree =="
+rpm-ostree status 2>&1 | head -30
+echo "== recent journal errors =="
+journalctl --user -p err --since "1 hour ago" --no-pager -n 40 2>&1
+echo "== dnf metadata =="
+timeout 90 dnf makecache 2>&1 | tail -25
+echo "dnf_exit=${PIPESTATUS[0]}"

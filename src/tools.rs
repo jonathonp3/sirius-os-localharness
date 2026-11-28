@@ -82,6 +82,8 @@ pub struct ToolSet {
     scopes: ToolScopes,
     dry_run: bool,
     web: bool,
+    hide_tool_result_get: bool,
+    automation_mode: bool,
     session_path: Option<PathBuf>,
     history_dir: Option<PathBuf>,
 }
@@ -95,8 +97,10 @@ impl ToolSet {
         scopes: ToolScopes,
         dry_run: bool,
         web: bool,
+        hide_tool_result_get: bool,
+        automation_mode: bool,
     ) -> Self {
-        Self { root, policy, plugins, mcp, scopes, dry_run, web, session_path: None, history_dir: None }
+        Self { root, policy, plugins, mcp, scopes, dry_run, web, hide_tool_result_get, automation_mode, session_path: None, history_dir: None }
     }
 
     pub fn set_session_path(&mut self, path: PathBuf) {
@@ -137,6 +141,12 @@ impl ToolSet {
             }
         }
         names.retain(|name| self.scopes.permits(name));
+        if self.hide_tool_result_get {
+            names.retain(|name| name != "tool_result_get");
+        }
+        if self.automation_mode {
+            names.retain(|name| name == "host_bash");
+        }
         names
     }
 
@@ -353,6 +363,24 @@ impl ToolSet {
                 .map(|name| self.scopes.permits(name))
                 .unwrap_or(true)
         });
+        if self.hide_tool_result_get {
+            definitions.retain(|definition| {
+                definition
+                    .get("function")
+                    .and_then(|function| function.get("name"))
+                    .and_then(Value::as_str)
+                    != Some("tool_result_get")
+            });
+        }
+        if self.automation_mode {
+            definitions.retain(|definition| {
+                definition
+                    .get("function")
+                    .and_then(|function| function.get("name"))
+                    .and_then(Value::as_str)
+                    == Some("host_bash")
+            });
+        }
         definitions
     }
 

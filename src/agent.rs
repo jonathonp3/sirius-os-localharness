@@ -54,6 +54,8 @@ pub struct Config {
     pub max_depth: usize,
     pub max_children: usize,
     pub web: bool,
+    pub hide_tool_result_get: bool,
+    pub automation_mode: bool,
 }
 
 pub struct Outcome {
@@ -69,13 +71,13 @@ pub async fn run(
     sink: &mut dyn EventSink,
 ) -> Result<Outcome> {
     let client = Client::new(&config.endpoint, &config.model, config.api_key.as_deref(), config.remote)?;
-    let mut tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run, config.web);
+    let mut tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run, config.web, config.hide_tool_result_get, config.automation_mode);
     tools.set_session_path(session.path().to_path_buf());
     tools.set_history_dir(config.data_dir.join("file-history"));
     let can_delegate = config.depth < config.max_depth;
     let mut definitions = tools.definitions();
     let mut names = tools.names();
-    if can_delegate {
+    if can_delegate && !config.automation_mode {
         definitions.push(subagent_definition());
         names.push("subagent".to_string());
     }

@@ -6,6 +6,10 @@ use anyhow::{bail, Context, Result};
 use chrono::{Datelike, Duration, Local, LocalResult, NaiveTime, TimeZone, Weekday};
 use serde::{Deserialize, Serialize};
 
+fn default_kind() -> String {
+    "prompt".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutomationTask {
     pub id: String,
@@ -13,6 +17,8 @@ pub struct AutomationTask {
     pub prompt: String,
     pub frequency: String,
     pub time: String,
+    #[serde(default = "default_kind")]
+    pub kind: String,
     #[serde(default)]
     pub weekday: Option<u32>,
     #[serde(default)]
@@ -112,10 +118,14 @@ pub fn validate(frequency: &str, time: &str, weekday: Option<u32>) -> Result<()>
     Ok(())
 }
 
-pub fn create(title: String, prompt: String, frequency: String, time: String, weekday: Option<u32>) -> Result<AutomationTask> {
+pub fn create(title: String, prompt: String, frequency: String, time: String, weekday: Option<u32>, kind: String) -> Result<AutomationTask> {
     let title = title.trim().to_string();
-    let prompt = prompt.trim().to_string();
-    if title.is_empty() || prompt.is_empty() {
+    let mut prompt = prompt.trim().to_string();
+    if kind == "health" {
+        if prompt.is_empty() {
+            prompt = "Run the local-harness-health snapshot and report a deterministic verdict.".to_string();
+        }
+    } else if title.is_empty() || prompt.is_empty() {
         bail!("title and prompt are required");
     }
     validate(&frequency, &time, weekday)?;
@@ -126,6 +136,7 @@ pub fn create(title: String, prompt: String, frequency: String, time: String, we
         prompt,
         frequency,
         time,
+        kind,
         weekday,
         paused: false,
         ended: false,

@@ -1291,6 +1291,7 @@ struct AutomationCreateBody {
     frequency: String,
     time: String,
     weekday: Option<u32>,
+    kind: Option<String>,
 }
 
 async fn create_automation(
@@ -1308,6 +1309,7 @@ async fn create_automation(
         body.frequency,
         body.time,
         body.weekday,
+        body.kind.unwrap_or_else(|| "prompt".to_string()),
     ) {
         Ok(task) => task,
         Err(error) => return (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("{error:#}") }))).into_response(),
@@ -1397,15 +1399,86 @@ struct AutomationSink;
 
 impl EventSink for AutomationSink {}
 
+async fn run_health_snapshot(workspace: &std::path::Path) -> String {
+    let script = "/var/home/jonathon/.local/bin/local-harness-health";
+    let use_host_spawn = std::path::Path::new("/usr/bin/flatpak-spawn").exists();
+    let mut command = if use_host_spawn {
+        let mut command = tokio::process::Command::new("/usr/bin/flatpak-spawn");
+        command.args(["--host", script]);
+        command
+    } else {
+        let mut command = tokio::process::Command::new("/bin/sh");
+        command.arg(script);
+        command
+    };
+    command.current_dir(workspace);
+    command.kill_on_drop(true);
+    match tokio::time::timeout(Duration::from_secs(150), command.output()).await {
+        Ok(Ok(output)) => {
+            let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.trim().is_empty() {
+                text.push_str("\n== stderr ==\n");
+                text.push_str(&stderr);
+            }
+            if !output.status.success() {
+                text.push_str(&format!("\n== exit: {} ==\n", output.status));
+            }
+            let verdict = if text.contains("GPG signature verification error")
+                || text.contains("checksum")
+                || text.contains("inactive")
+                || text.to_ascii_lowercase().contains("failed")
+            {
+                "DEGRADED"
+            } else {
+                "HEALTHY"
+            };
+            format!("HEALTH: {verdict}\n\n{text}")
+        }
+        Ok(Err(error)) => format!("automation error: {error:#}"),
+        Err(_) => "automation error: health snapshot timed out".to_string(),
+    }
+}
+
 async fn run_automation(state: Arc<AppState>, task: AutomationTask) {
     let _permit = match state.slots.acquire().await {
         Ok(permit) => permit,
         Err(_) => return,
     };
+    if task.kind == "health" {
+        let result = async {
+            let session = Session::create(&state.data_dir, &state.config.model).await?;
+            let text = run_health_snapshot(&state.config.workspace).await;
+            session
+                .append(json!({"type":"message","message":{"role":"user","content":"System health check"}}))
+                .await?;
+            session
+                .append(json!({"type":"message","message":{"role":"assistant","content":text}}))
+                .await?;
+            Ok::<(String, String), anyhow::Error>((text, session.id))
+        }
+        .await;
+        let (text, session_id) = match result {
+            Ok((text, session_id)) => (text, Some(session_id)),
+            Err(error) => (format!("automation error: {error:#}"), None),
+        };
+        let preview: String = text.chars().take(2000).collect();
+        let mut tasks = state.automations.lock().await;
+        if let Some(entry) = tasks.iter_mut().find(|entry| entry.id == task.id) {
+            entry.last_result = Some(preview);
+            entry.last_session = session_id;
+            entry.last_run = Some(Local::now().timestamp());
+        }
+        drop(tasks);
+        let _ = save_automations(&state).await;
+        return;
+    }
     let result = async {
         let session = Session::create(&state.data_dir, &state.config.model).await?;
         let mut sink = AutomationSink;
-        let outcome = agent::run(state.config.clone(), &session, &task.prompt, Vec::new(), &mut sink).await?;
+        let mut config = state.config.clone();
+        config.approver = approval::automation();
+        let outcome = agent::run(config, &session, &task.prompt, Vec::new(), &mut sink).await?;
         Ok::<(String, String), anyhow::Error>((outcome.content, session.id))
     }
     .await;

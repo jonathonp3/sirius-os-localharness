@@ -425,6 +425,8 @@ async fn main() -> Result<()> {
                 max_depth,
                 max_children,
                 web: cli.allow_web,
+                hide_tool_result_get: false,
+                automation_mode: false,
             };
             let mut sink = CliSink::default();
             let result = agent::run(config, &session, &prompt, history, &mut sink).await;
@@ -469,6 +471,8 @@ async fn main() -> Result<()> {
                 max_depth,
                 max_children,
                 web: cli.allow_web,
+                hide_tool_result_get: false,
+                automation_mode: false,
             };
             server::run(config, data_dir, port, token, open, concurrency, cli.yes, mcp_failures).await
         }
@@ -509,6 +513,8 @@ async fn main() -> Result<()> {
                 max_depth,
                 max_children: 4,
                 web: cli.allow_web,
+                hide_tool_result_get: false,
+                automation_mode: false,
             };
             eprintln!("[workflow] session {}", session.id);
             workflow::run(config, &file, &session).await
