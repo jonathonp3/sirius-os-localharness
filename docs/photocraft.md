@@ -149,6 +149,18 @@ coder/tool pass → release
 deterministic validation → CPU
 ```
 
+## Artifact handoff
+
+After a successful export, the skill reports:
+
+```text
+Artifact: /absolute/path/to/export.png
+```
+
+Local Harness scans tool results for workspace artifact paths and shows the
+result in the artifact panel, not inline in the assistant prose. Do not wrap the
+path in backticks; use one absolute path per line.
+
 ## Skill
 
 The workflow is installed at:

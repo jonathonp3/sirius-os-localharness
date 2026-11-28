@@ -103,12 +103,22 @@ Do not let the critic authorize an edit by itself. Any resulting change must be 
 
 ### 7. Report
 
-Report:
+After a successful export, include one machine-readable handoff line:
+
+```text
+Artifact: /absolute/path/to/export.png
+```
+
+Use the actual exported path, not a placeholder, and do not wrap the path in
+backticks. This lets Local Harness detect the image and show it in the artifact
+panel.
+
+Then report:
 
 ```text
 spec or command used
 deterministic result
-export path
+Artifact: /absolute/path/to/export.png
 critic observations, clearly labelled as observations
 ```
 
