@@ -579,6 +579,7 @@ let controller = null;
 let queuedPrompts = [];
 let approvalAutoMode = null;
 let approvalRemaining = 0;
+let requestStartedAt = 0;
 let providerState = null;
 
 let assistantEl = null;
@@ -3145,6 +3146,7 @@ async function send() {
   promptEl.value = '';
   autoGrowPrompt();
   resetApprovalAuto();
+  requestStartedAt = performance.now();
   sendEl.disabled = true;
   stopEl.disabled = false;
   controller = new AbortController();
