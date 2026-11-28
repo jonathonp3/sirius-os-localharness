@@ -153,6 +153,24 @@ coder/tool pass → release
 deterministic validation → CPU
 ```
 
+## Editing an existing image
+
+When editing a generated image:
+
+1. find the matching structured spec:
+   - `<name>.spec.json`
+   - `<name>.json`
+   - `<name>.pcraft.json`
+   - any workspace JSON whose `export_path` references the PNG
+2. read and inspect the spec
+3. copy it to a new version, such as `<name>.v2.spec.json`
+4. change only the requested parameters
+5. run the new spec and export a new PNG
+6. keep the original image and spec intact
+
+Never edit a flat PNG and claim the layered/spec source was changed. If no JSON
+spec exists, report that and ask before reconstructing one.
+
 ## Export format
 
 PhotoCraft has no implicit format; the export path selects it.

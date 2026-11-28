@@ -1,12 +1,82 @@
 ---
 name: photocraft-design
 display-name: PhotoCraft Design
-description: Use for image creation, icon design, composition, or visual verification. Trigger when the user says "create image", "make an icon", "design a logo", or asks for PhotoCraft output. Compose and verify with a locked structured spec, deterministic validation, and a read-only vision critic.
+description: Use for image creation, icon design, composition, editing, or visual verification. Trigger when the user says "create image", "edit image", "make an icon", "design a logo", or asks for PhotoCraft output. Reuse saved JSON specs when modifying an existing image. Compose and verify with a locked structured spec, deterministic validation, and a read-only vision critic.
 ---
 
 # PhotoCraft Design
 
 Use this skill for PhotoCraft icon or design work.
+
+## Editing an existing image
+
+When the user asks to modify an image, do not edit the flat PNG by hand and do
+not invent a new design. Find the structured source first.
+
+### 1. Locate the source
+
+Given an image path such as `/path/design.png`, search for:
+
+```text
+/path/design.spec.json
+/path/design.json
+/path/design.pcraft.json
+```
+
+Then search the workspace for JSON specs whose `export_path` references the
+image:
+
+```text
+grep -rl "design.png" <workspace> --include='*.json'
+```
+
+Use `glob`/`grep` and `read_file`. Prefer the original spec over a later copy.
+
+### 2. Inspect before editing
+
+- `read_file` the spec.
+- `document_inspect` if a PSD/TIFF master is involved.
+- Use the exported PNG or `vision_critique` only to understand the current
+  appearance, never to authorize changes.
+
+### 3. Edit minimally
+
+Copy the spec to a new version:
+
+```text
+design.v2.spec.json
+```
+
+Change only the requested text, color, position, shape order, or parameter.
+Do not rebuild geometry or change unrelated elements.
+
+### 4. Rebuild and export
+
+Run the edited spec with an absolute path:
+
+```text
+run_spec path=/absolute/path/design.v2.spec.json
+```
+
+Export a new lossless PNG:
+
+```text
+/absolute/path/design.v2.png
+```
+
+Keep the original PNG and spec intact.
+
+### 5. Report
+
+```text
+Source spec: /absolute/path/design.spec.json
+Edited spec: /absolute/path/design.v2.spec.json
+Artifact: /absolute/path/design.v2.png
+```
+
+If no JSON spec exists, say so. Do not claim the image was edited from a PNG.
+Ask for the spec, or offer to reconstruct one explicitly with the user's
+approval.
 
 ## Default output
 
