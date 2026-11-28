@@ -2929,6 +2929,8 @@ function addApprovalCard(payload) {
     log.appendChild(card);
   }
   log.scrollTop = log.scrollHeight;
+  const approve = card.querySelector('button[data-decision="approve"]');
+  if (approve) approve.focus({ preventScroll: true });
   setStatus('waiting for approval');
 }
 
