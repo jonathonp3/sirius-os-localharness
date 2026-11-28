@@ -2962,7 +2962,8 @@ function handleBlock(block) {
     finishToolCard(openTool, payload.chars, payload.preview);
     openTool = null;
   } else if (event === 'notice') {
-    add('meta', payload.message);
+    const denied = /denied|not permitted|nothing was fetched/i.test(payload.message || '');
+    add(denied ? 'error' : 'meta', payload.message);
   } else if (event === 'approval') {
     addApprovalCard(payload);
     assistantEl = null;
