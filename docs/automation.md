@@ -96,6 +96,24 @@ Actions:
 {"action":"run"}
 ```
 
+## Health-check tasks
+
+For system-status automation, use the `automation-health` skill.
+
+Recommended prompt:
+
+```text
+Load the automation-health skill.
+Load journal-check before inspecting logs.
+Use plugin__log_check for unit logs.
+Check service state, containers, disk, and package metadata.
+Report HEALTHY, DEGRADED, or FAILED with concise evidence.
+A checksum mismatch is DEGRADED, never normal.
+```
+
+The skill requires journal evidence and forbids describing the system as normal
+while package metadata checksum errors are present.
+
 ## Limitations
 
 - schedules are local-time only

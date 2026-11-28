@@ -48,6 +48,7 @@ The agent can also load a skill by name when the task matches its description.
 
 Current repository skills:
 
+- `automation-health`
 - `cloudflare-fetch`
 - `long-document-formatter`
 - `markdown-formatter` (inside its plugin)
