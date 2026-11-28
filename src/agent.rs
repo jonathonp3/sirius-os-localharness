@@ -54,6 +54,7 @@ pub struct Config {
     pub max_depth: usize,
     pub max_children: usize,
     pub web: bool,
+    pub allow_downloads: bool,
     pub hide_tool_result_get: bool,
     pub automation_mode: bool,
 }
@@ -71,7 +72,7 @@ pub async fn run(
     sink: &mut dyn EventSink,
 ) -> Result<Outcome> {
     let client = Client::new(&config.endpoint, &config.model, config.api_key.as_deref(), config.remote)?;
-    let mut tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run, config.web, config.hide_tool_result_get, config.automation_mode);
+    let mut tools = ToolSet::new(config.workspace.clone(), config.policy, config.plugins.clone(), config.mcp.clone(), config.scopes.clone(), config.dry_run, config.web, config.allow_downloads, config.hide_tool_result_get, config.automation_mode);
     tools.set_session_path(session.path().to_path_buf());
     tools.set_history_dir(config.data_dir.join("file-history"));
     let can_delegate = config.depth < config.max_depth;
@@ -255,7 +256,7 @@ pub async fn run(
                     .or_else(|| web_approval_reason(&call.function.name, &call.function.arguments))
                     .or_else(|| tools.plugin_permission_reason(&call.function.name))
                 {
-                    let network = reason.starts_with("read-only web");
+                    let network = reason.starts_with("read-only web") || reason.starts_with("web download");
                     let request = ApprovalRequest {
                         name: call.function.name.clone(),
                         arguments: call.function.arguments.clone(),
@@ -407,7 +408,7 @@ async fn compact(
 }
 
 fn web_approval_reason(name: &str, arguments: &str) -> Option<String> {
-    if !matches!(name, "web_search" | "web_fetch") {
+    if !matches!(name, "web_search" | "web_fetch" | "web_download") {
         return None;
     }
     let value: serde_json::Value = serde_json::from_str(arguments).ok()?;
@@ -420,6 +421,10 @@ fn web_approval_reason(name: &str, arguments: &str) -> Option<String> {
             .get("url")
             .and_then(serde_json::Value::as_str)
             .map(|url| format!("read-only web fetch: {url}")),
+        "web_download" => value
+            .get("url")
+            .and_then(serde_json::Value::as_str)
+            .map(|url| format!("web download: {url}")),
         _ => None,
     }
 }

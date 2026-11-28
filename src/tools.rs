@@ -82,6 +82,7 @@ pub struct ToolSet {
     scopes: ToolScopes,
     dry_run: bool,
     web: bool,
+    allow_downloads: bool,
     hide_tool_result_get: bool,
     automation_mode: bool,
     session_path: Option<PathBuf>,
@@ -97,10 +98,11 @@ impl ToolSet {
         scopes: ToolScopes,
         dry_run: bool,
         web: bool,
+        allow_downloads: bool,
         hide_tool_result_get: bool,
         automation_mode: bool,
     ) -> Self {
-        Self { root, policy, plugins, mcp, scopes, dry_run, web, hide_tool_result_get, automation_mode, session_path: None, history_dir: None }
+        Self { root, policy, plugins, mcp, scopes, dry_run, web, allow_downloads, hide_tool_result_get, automation_mode, session_path: None, history_dir: None }
     }
 
     pub fn set_session_path(&mut self, path: PathBuf) {
@@ -123,6 +125,9 @@ impl ToolSet {
         if self.web {
             names.push("web_search".to_string());
             names.push("web_fetch".to_string());
+            if self.allow_downloads {
+                names.push("web_download".to_string());
+            }
         }
         if self.policy.allows_write() {
             names.push("write_file".to_string());
@@ -281,6 +286,23 @@ impl ToolSet {
                     }
                 }
             }));
+            if self.allow_downloads {
+                definitions.push(json!({
+                    "type": "function",
+                    "function": {
+                        "name": "web_download",
+                        "description": "Download an HTTPS file into the workspace. Requires explicit approval. Only available with a remote API provider.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string", "description": "Public HTTPS URL" },
+                                "path": { "type": "string", "description": "Optional workspace-relative destination path" }
+                            },
+                            "required": ["url"]
+                        }
+                    }
+                }));
+            }
         }
         if self.policy.allows_write() {
             definitions.push(json!({
@@ -452,6 +474,17 @@ impl ToolSet {
                     bail!("web tools are disabled (use --allow-web)");
                 }
                 crate::web::fetch(&string_arg(&arguments, "url")?).await
+            }
+            "web_download" => {
+                if !self.web {
+                    bail!("web tools are disabled (use --allow-web)");
+                }
+                if !self.allow_downloads {
+                    bail!("web downloads are available only with a remote API provider");
+                }
+                let url = string_arg(&arguments, "url")?;
+                let path = arguments.get("path").and_then(Value::as_str);
+                crate::web::download(&url, path, &self.root).await
             }
             "skill" => {
                 let name = string_arg(&arguments, "name")?;

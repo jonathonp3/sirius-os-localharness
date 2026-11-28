@@ -256,3 +256,89 @@ pub async fn fetch(url: &str) -> Result<String> {
     }
     bail!("too many redirects");
 }
+
+const MAX_DOWNLOAD: usize = 50 * 1024 * 1024;
+
+/// Download an HTTPS file into the workspace. Callers must obtain approval first.
+pub async fn download(url: &str, requested_path: Option<&str>, root: &std::path::Path) -> Result<String> {
+    let url = Url::parse(url.trim()).context("invalid URL")?;
+    validate_url(&url).await?;
+    let response = client()?
+        .get(url.clone())
+        .timeout(Duration::from_secs(120))
+        .send()
+        .await
+        .context("downloading URL")?;
+    if !response.status().is_success() {
+        bail!("server returned HTTP {}", response.status());
+    }
+    if let Some(length) = response.content_length() {
+        if length > MAX_DOWNLOAD as u64 {
+            bail!("download is too large ({length} bytes; limit {MAX_DOWNLOAD})");
+        }
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let mut stream = response.bytes_stream();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.context("reading download body")?;
+        if body.len() + chunk.len() > MAX_DOWNLOAD {
+            bail!("download exceeded {MAX_DOWNLOAD} bytes");
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    let root = root.canonicalize().context("resolving workspace")?;
+    let relative = requested_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            let name = url
+                .path_segments()
+                .and_then(|segments| segments.last())
+                .filter(|name| !name.is_empty())
+                .unwrap_or("download");
+            std::path::PathBuf::from("downloads").join(name)
+        });
+    if relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        bail!("download path must stay inside the workspace");
+    }
+    let target = root.join(&relative);
+    let parent = target.parent().context("download path has no parent")?;
+    tokio::fs::create_dir_all(parent).await.context("creating download directory")?;
+    let parent = parent.canonicalize().context("resolving download directory")?;
+    if !parent.starts_with(&root) {
+        bail!("download path escapes the workspace");
+    }
+    let filename = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("download path has no filename")?;
+    if filename.is_empty() {
+        bail!("download path has no filename");
+    }
+    let target = parent.join(filename);
+    tokio::fs::write(&target, &body).await.context("writing download")?;
+    Ok(format!(
+        "Downloaded {}({}) to {} ({} bytes)",
+        url,
+        content_type,
+        target.display(),
+        body.len()
+    ))
+}

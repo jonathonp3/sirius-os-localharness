@@ -425,6 +425,7 @@ async fn main() -> Result<()> {
                 max_depth,
                 max_children,
                 web: cli.allow_web,
+                allow_downloads: remote,
                 hide_tool_result_get: false,
                 automation_mode: false,
             };
@@ -471,6 +472,7 @@ async fn main() -> Result<()> {
                 max_depth,
                 max_children,
                 web: cli.allow_web,
+                allow_downloads: remote,
                 hide_tool_result_get: false,
                 automation_mode: false,
             };
@@ -513,6 +515,7 @@ async fn main() -> Result<()> {
                 max_depth,
                 max_children: 4,
                 web: cli.allow_web,
+                allow_downloads: remote,
                 hide_tool_result_get: false,
                 automation_mode: false,
             };
