@@ -33,6 +33,21 @@ Local model controls are disabled while a remote provider is active.
 
 Shows connected servers, transport, tools, and failures.
 
+## Artifacts
+
+The artifact panel is hidden by default. When a tool result contains a workspace
+image or code file, Local Harness adds a thumbnail or "Open" button to the tool
+card. Clicking it opens the panel.
+
+Supported:
+
+- images: PNG, JPEG, WebP, GIF, SVG
+- code/text: Python, shell, JavaScript/TypeScript, JSON, Markdown, HTML, CSS,
+  Rust, TOML, YAML, XML, text, logs
+
+Files are served only from the workspace, with a 25 MB limit. The panel is for
+display only; it does not edit artifacts.
+
 ## Markdown and code
 
 - Markdown rendering

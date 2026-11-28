@@ -123,6 +123,21 @@ body.sidebar-open { padding-left:350px; }
 #model-toggle { background:var(--panel); color:var(--text); border:1px solid var(--border); padding:0 10px; font-size:13px; }
 #model-panel { position:fixed; top:58px; right:16px; width:min(410px,92vw); max-height:calc(100vh - 76px); z-index:1300; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; box-shadow:0 16px 45px rgba(0,0,0,.35); }
 #model-panel[hidden] { display:none; }
+#artifact-panel { position:fixed; top:58px; right:16px; width:min(460px,92vw); max-height:calc(100vh - 76px); z-index:1320; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; box-shadow:0 16px 45px rgba(0,0,0,.35); }
+#artifact-panel[hidden] { display:none; }
+.artifact-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.artifact-head strong { font-size:16px; }
+#artifact-close { background:var(--bg); color:var(--text); border:1px solid var(--border); min-width:30px; min-height:28px; padding:0 8px; font-size:17px; }
+#artifact-list { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+.artifact-item { text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:5px 7px; font-size:12px; cursor:pointer; word-break:break-all; }
+.artifact-item.active { box-shadow:inset 3px 0 0 var(--accent); }
+#artifact-viewer { display:flex; align-items:center; justify-content:center; background:var(--bg); border:1px solid var(--border); border-radius:7px; min-height:120px; overflow:auto; }
+#artifact-image { max-width:100%; max-height:55vh; display:block; }
+#artifact-code { margin:0; padding:8px; width:100%; max-height:55vh; overflow:auto; white-space:pre; font-size:12px; }
+#artifact-meta { color:var(--muted); font-size:12px; margin-top:7px; word-break:break-all; }
+.tool-artifacts { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.tool-artifact { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 7px; font-size:12px; cursor:pointer; max-width:100%; }
+.tool-artifact img { display:block; max-width:120px; max-height:90px; border-radius:4px; }
 .model-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:7px; }
 .model-head strong { font-size:16px; }
 #model-close { background:var(--bg); color:var(--text); border:1px solid var(--border); min-width:30px; min-height:28px; padding:0 8px; font-size:17px; }
@@ -347,6 +362,18 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
     <div id="model-install-status"></div>
   </div>
 </aside>
+<aside id="artifact-panel" hidden>
+  <div class="artifact-head">
+    <strong>Artifacts</strong>
+    <button id="artifact-close" type="button" title="Close artifacts">×</button>
+  </div>
+  <div id="artifact-list"></div>
+  <div id="artifact-viewer">
+    <img id="artifact-image" alt="Generated artifact" hidden>
+    <pre id="artifact-code" hidden><code></code></pre>
+  </div>
+  <div id="artifact-meta"></div>
+</aside>
 <aside id="mcp-panel" hidden>
   <div class="mcp-head">
     <strong>MCP Servers</strong>
@@ -403,6 +430,12 @@ const modelDownloadText = document.getElementById('model-download-text');
 const modelProgress = document.getElementById('model-progress');
 const modelCancel = document.getElementById('model-cancel');
 const modelInstallStatus = document.getElementById('model-install-status');
+const artifactPanel = document.getElementById('artifact-panel');
+const artifactClose = document.getElementById('artifact-close');
+const artifactList = document.getElementById('artifact-list');
+const artifactImage = document.getElementById('artifact-image');
+const artifactCode = document.getElementById('artifact-code');
+const artifactMeta = document.getElementById('artifact-meta');
 const mcpToggle = document.getElementById('mcp-toggle');
 const mcpPanel = document.getElementById('mcp-panel');
 const mcpClose = document.getElementById('mcp-close');
@@ -2382,6 +2415,109 @@ function addToolCard(name, argumentsText) {
   return card;
 }
 
+const ARTIFACT_IMAGE_EXT = new Set(['png','jpg','jpeg','webp','gif','svg']);
+const ARTIFACT_CODE_EXT = new Set(['py','sh','js','mjs','ts','tsx','jsx','json','md','html','htm','css','rs','toml','yaml','yml','xml','txt','log']);
+let artifacts = [];
+let activeArtifactPath = null;
+
+function artifactKind(path) {
+  const extension = (path.split('.').pop() || '').toLowerCase();
+  if (ARTIFACT_IMAGE_EXT.has(extension)) return 'image';
+  if (ARTIFACT_CODE_EXT.has(extension)) return 'code';
+  return null;
+}
+
+function extractArtifacts(text) {
+  const pattern = /(?:^|[\s("'`])((?:\.{1,2}\/|\/)?[^\s"'`<>]+\.(?:png|jpe?g|webp|gif|svg|py|sh|js|mjs|ts|tsx|jsx|json|md|html?|css|rs|toml|ya?ml|xml|txt|log))(?=$|[\s)"'`,.;:])/gi;
+  const found = [];
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    let path = match[1].replace(/^["'`(]+|["'`),.;:]+$/g, '');
+    if (/^https?:\/\//i.test(path)) continue;
+    if (!artifactKind(path)) continue;
+    if (!found.includes(path)) found.push(path);
+    if (found.length >= 12) break;
+  }
+  return found;
+}
+
+function artifactUrl(path) {
+  return '/api/artifact?token=' + encodeURIComponent(token) + '&path=' + encodeURIComponent(path);
+}
+
+function artifactName(path) {
+  return path.split('/').pop() || path;
+}
+
+function renderArtifactList() {
+  artifactList.innerHTML = '';
+  for (const path of artifacts) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'artifact-item' + (path === activeArtifactPath ? ' active' : '');
+    button.textContent = (artifactKind(path) === 'image' ? 'Image · ' : 'Code · ') + artifactName(path);
+    button.title = path;
+    button.addEventListener('click', () => openArtifact(path));
+    artifactList.appendChild(button);
+  }
+}
+
+async function openArtifact(path) {
+  const kind = artifactKind(path);
+  if (!kind) return;
+  activeArtifactPath = path;
+  artifactPanel.hidden = false;
+  if (!artifacts.includes(path)) artifacts.push(path);
+  renderArtifactList();
+  artifactImage.hidden = true;
+  artifactCode.hidden = true;
+  artifactMeta.textContent = path;
+  if (kind === 'image') {
+    artifactImage.src = artifactUrl(path);
+    artifactImage.hidden = false;
+    return;
+  }
+  try {
+    const response = await fetch(artifactUrl(path));
+    const text = await response.text();
+    artifactCode.querySelector('code').textContent = response.ok ? text : (text || ('HTTP ' + response.status));
+  } catch (error) {
+    artifactCode.querySelector('code').textContent = String(error);
+  }
+  artifactCode.hidden = false;
+}
+
+function registerArtifacts(card, text) {
+  const found = extractArtifacts(text);
+  if (!found.length) return;
+  for (const path of found) {
+    if (!artifacts.includes(path)) artifacts.push(path);
+  }
+  renderArtifactList();
+  const row = document.createElement('div');
+  row.className = 'tool-artifacts';
+  for (const path of found) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'tool-artifact';
+    button.title = path;
+    if (artifactKind(path) === 'image') {
+      const image = document.createElement('img');
+      image.src = artifactUrl(path);
+      image.alt = artifactName(path);
+      image.loading = 'lazy';
+      button.appendChild(image);
+    } else {
+      button.textContent = 'Open ' + artifactName(path);
+    }
+    button.addEventListener('click', () => openArtifact(path));
+    row.appendChild(button);
+  }
+  card.appendChild(row);
+}
+
+artifactClose.addEventListener('click', () => { artifactPanel.hidden = true; });
+
 function finishToolCard(card, chars, preview) {
   if (!card) return;
   const shown = preview || '';
@@ -2390,6 +2526,7 @@ function finishToolCard(card, chars, preview) {
   const isError = denied || /^tool error:/i.test(shown) || /\[exit [1-9]/.test(shown);
   card.querySelector('.tool-result').hidden = false;
   card.querySelector('.tool-result-text').textContent = shown + (chars > shown.length ? '\n… (' + chars + ' chars total)' : '');
+  registerArtifacts(card, shown);
   const status = card.querySelector('.tool-status');
   status.textContent = denied ? 'denied' : dry ? 'dry-run' : isError ? 'error' : 'done';
   status.classList.add(isError ? 'error' : 'ok');

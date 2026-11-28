@@ -110,6 +110,7 @@ pub async fn run(
         .route("/api/model-catalog/cancel", post(model_catalog_cancel))
         .route("/api/mcp/status", get(mcp_status))
         .route("/api/skills", get(list_skills))
+        .route("/api/artifact", get(artifact))
         .route("/api/sessions", get(list_sessions))
         .route("/api/sessions/export", get(export_sessions))
         .route("/api/sessions/{id}/export", get(export_session))
@@ -1175,6 +1176,82 @@ fn random_token() -> Result<String> {
         .and_then(|mut file| file.read_exact(&mut bytes))
         .context("reading /dev/urandom")?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect::<Vec<_>>().join(""))
+}
+
+#[derive(Deserialize)]
+struct ArtifactQuery {
+    token: Option<String>,
+    path: String,
+}
+
+fn artifact_mime(extension: &str) -> Option<&'static str> {
+    match extension.to_ascii_lowercase().as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        "gif" => Some("image/gif"),
+        "svg" => Some("image/svg+xml"),
+        "txt" | "log" => Some("text/plain; charset=utf-8"),
+        "md" => Some("text/markdown; charset=utf-8"),
+        "json" => Some("application/json; charset=utf-8"),
+        "html" | "htm" => Some("text/html; charset=utf-8"),
+        "css" => Some("text/css; charset=utf-8"),
+        "js" | "mjs" => Some("text/javascript; charset=utf-8"),
+        "ts" | "tsx" | "jsx" | "py" | "sh" | "rs" | "toml" | "yaml" | "yml" | "xml" => {
+            Some("text/plain; charset=utf-8")
+        }
+        _ => None,
+    }
+}
+
+async fn artifact(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ArtifactQuery>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&state, &AuthQuery { token: query.token }, &headers) {
+        return unauthorized();
+    }
+    let requested = std::path::PathBuf::from(&query.path);
+    let path = if requested.is_absolute() {
+        requested
+    } else {
+        state.config.workspace.join(requested)
+    };
+    let root = match state.config.workspace.canonicalize() {
+        Ok(root) => root,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "workspace unavailable").into_response(),
+    };
+    let path = match path.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return (StatusCode::NOT_FOUND, "artifact not found").into_response(),
+    };
+    if !path.starts_with(&root) {
+        return (StatusCode::FORBIDDEN, "artifact escapes workspace").into_response();
+    }
+    let metadata = match tokio::fs::metadata(&path).await {
+        Ok(metadata) if metadata.is_file() => metadata,
+        _ => return (StatusCode::NOT_FOUND, "artifact not found").into_response(),
+    };
+    if metadata.len() > 25 * 1024 * 1024 {
+        return (StatusCode::PAYLOAD_TOO_LARGE, "artifact is too large").into_response();
+    }
+    let extension = path.extension().and_then(|extension| extension.to_str()).unwrap_or_default();
+    let Some(mime) = artifact_mime(extension) else {
+        return (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported artifact type").into_response();
+    };
+    let bytes = match tokio::fs::read(&path).await {
+        Ok(bytes) => bytes,
+        Err(_) => return (StatusCode::NOT_FOUND, "artifact not found").into_response(),
+    };
+    let mut response_headers = HeaderMap::new();
+    response_headers.insert(CONTENT_TYPE, HeaderValue::from_static(mime));
+    response_headers.insert(CONTENT_DISPOSITION, HeaderValue::from_static("inline"));
+    response_headers.insert(
+        axum::http::HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    (response_headers, bytes).into_response()
 }
 
 #[derive(Deserialize)]

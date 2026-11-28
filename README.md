@@ -22,7 +22,7 @@ Browser or CLI ── HTTP/SSE ── harness ── llama.cpp / DeepSeek / Kimi
 - **Plugins.** Versioned packages with permissions, SHA-256 verification, rollback, a catalog, and optional MCP bundles.
 - **Model downloads.** Hugging Face GGUF downloads, progress, resume, curated entries, and paired `mmproj` support.
 - **PhotoCraft.** MCP-based design tools with deterministic validation and a read-only vision critic.
-- **Offline UI.** Markdown, code highlighting, spellcheck, themes, and the native window work without external assets.
+- **Offline UI.** Markdown, code highlighting, spellcheck, themes, artifacts, and the native window work without external assets.
 
 ## Install
 
