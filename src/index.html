@@ -58,6 +58,10 @@ header h1 { font-size:14px; font-weight:600; margin:0; }
 .approval-actions button { padding:6px 14px; border:0; border-radius:6px; cursor:pointer; font-weight:600; font-size:14px; }
 .approval-actions button[data-decision="approve"] { background:#68d391; color:#08110c; border:1px solid #68d391; }
 .approval-actions button[data-decision="deny"] { background:#e5e7eb; color:#1f2937; border:1px solid #9ca3af; }
+.approval-actions button[data-decision="approve6"], .approval-actions button[data-decision="approve-turn"] { background:var(--bg); color:var(--text); border:1px solid var(--border); }
+#approval-auto-banner { position:fixed; right:16px; bottom:72px; z-index:1400; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:8px 10px; box-shadow:0 8px 24px rgba(0,0,0,.35); font-size:13px; display:flex; align-items:center; gap:8px; }
+#approval-auto-banner[hidden] { display:none; }
+#approval-auto-off { background:transparent; color:var(--text); border:0; text-decoration:underline; cursor:pointer; font:inherit; padding:0; }
 .approval-actions button:disabled { opacity:.5; cursor:default; }
 #stop, #send { padding:0 12px; }
 #spell, #stop, #send { flex:0 0 auto; min-width:64px; min-height:48px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; }
@@ -573,6 +577,8 @@ const scaleEl = document.getElementById('scale');
 
 let controller = null;
 let queuedPrompts = [];
+let approvalAutoMode = null;
+let approvalRemaining = 0;
 let providerState = null;
 
 let assistantEl = null;
@@ -2893,49 +2899,107 @@ function finishToolCard(card, chars, preview) {
   log.scrollTop = log.scrollHeight;
 }
 
+function resetApprovalAuto() {
+  approvalAutoMode = null;
+  approvalRemaining = 0;
+  updateApprovalBanner();
+}
+
+function updateApprovalBanner() {
+  let banner = document.getElementById('approval-auto-banner');
+  if (!approvalAutoMode) {
+    if (banner) banner.remove();
+    return;
+  }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'approval-auto-banner';
+    banner.setAttribute('role', 'status');
+    banner.innerHTML = '<span id="approval-auto-text"></span><button id="approval-auto-off" type="button">Turn off</button>';
+    banner.querySelector('#approval-auto-off').addEventListener('click', resetApprovalAuto);
+    document.body.appendChild(banner);
+  }
+  banner.querySelector('#approval-auto-text').textContent = approvalAutoMode === 'turn'
+    ? 'Approval auto-yes: until prompt completes'
+    : 'Approval auto-yes: ' + approvalRemaining + ' left';
+}
+
+async function resolveApproval(card, id, approved, button) {
+  card.classList.add('resolved');
+  card.querySelectorAll('button').forEach((other) => {
+    other.disabled = true;
+    if (other !== button) other.style.display = 'none';
+  });
+  button.textContent = approved ? 'Approved' : 'Denied';
+  setStatus(approved ? 'thinking' : 'denied');
+  try {
+    const response = await fetch('/api/approval?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, decision: approved }),
+    });
+    if (!response.ok) {
+      add('error', await response.text());
+    } else {
+      card.remove();
+    }
+  } catch (error) {
+    add('error', String(error));
+  }
+}
+
 function addApprovalCard(payload) {
   const card = document.createElement('div');
   card.className = 'approval-card';
   card.innerHTML = '<div class="approval-title">⚠ Approval required</div>'
     + '<div class="approval-reason"></div>'
     + '<pre><code></code></pre>'
-    + '<div class="approval-actions"><button type="button" data-decision="approve">Approve</button><button type="button" data-decision="deny">Deny</button></div>';
+    + '<div class="approval-actions">'
+    + '<button type="button" data-decision="approve">Approve</button>'
+    + '<button type="button" data-decision="deny">Deny</button>'
+    + '<button type="button" data-decision="approve6">Allow 6</button>'
+    + '<button type="button" data-decision="approve-turn">Until done</button>'
+    + '</div>';
   card.querySelector('.approval-reason').textContent = payload.reason || ('Approval required for ' + (payload.name || 'tool'));
   card.querySelector('code').textContent = prettyJson(payload.arguments || '');
-  card.querySelectorAll('button').forEach((button) => {
+  const approve = card.querySelector('button[data-decision="approve"]');
+  const deny = card.querySelector('button[data-decision="deny"]');
+  const approve6 = card.querySelector('button[data-decision="approve6"]');
+  const approveTurn = card.querySelector('button[data-decision="approve-turn"]');
+  const bind = (button, decision, mode = null) => {
     button.addEventListener('click', async () => {
-      card.classList.add('resolved');
-      card.querySelectorAll('button').forEach((other) => {
-        other.disabled = true;
-        if (other !== button) other.style.display = 'none';
-      });
-      const approved = button.dataset.decision === 'approve';
-      button.textContent = approved ? 'Approved' : 'Denied';
-      setStatus(approved ? 'thinking' : 'denied');
-      try {
-        const response = await fetch('/api/approval?token=' + encodeURIComponent(token), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: payload.id, decision: approved }),
-        });
-        if (!response.ok) {
-          add('error', await response.text());
-        } else {
-          card.remove();
-        }
-      } catch (error) {
-        add('error', String(error));
+      if (mode === 'count') {
+        approvalAutoMode = 'count';
+        approvalRemaining = 5;
+        updateApprovalBanner();
+      } else if (mode === 'turn') {
+        approvalAutoMode = 'turn';
+        updateApprovalBanner();
       }
+      await resolveApproval(card, payload.id, decision === 'approve', button);
     });
-  });
+  };
+  bind(approve, 'approve');
+  bind(deny, 'deny');
+  bind(approve6, 'approve', 'count');
+  bind(approveTurn, 'approve', 'turn');
   if (openTool && openTool.parentNode === log) {
     log.insertBefore(card, openTool);
   } else {
     log.appendChild(card);
   }
   log.scrollTop = log.scrollHeight;
-  const approve = card.querySelector('button[data-decision="approve"]');
-  if (approve) approve.focus({ preventScroll: true });
+  if (approvalAutoMode === 'count' && approvalRemaining > 0) {
+    approvalRemaining -= 1;
+    updateApprovalBanner();
+    resolveApproval(card, payload.id, true, approve);
+    return;
+  }
+  if (approvalAutoMode === 'turn') {
+    resolveApproval(card, payload.id, true, approve);
+    return;
+  }
+  approve.focus({ preventScroll: true });
   setStatus('waiting for approval');
 }
 
@@ -2993,6 +3057,7 @@ function handleBlock(block) {
     const cached = payload.cached_tokens ? ' · ' + payload.cached_tokens + ' cached' : '';
     add('meta', 'session ' + payload.session + ' · ' + payload.prompt_tokens + '→' + payload.completion_tokens + ' tokens' + cached);
     setStatus('ready');
+    resetApprovalAuto();
     assistantEl = null;
     reasoningEl = null;
     openTool = null;
@@ -3000,6 +3065,7 @@ function handleBlock(block) {
   } else if (event === 'error') {
     add('error', payload.message);
     setStatus('error', true);
+    resetApprovalAuto();
     assistantEl = null;
     reasoningEl = null;
     openTool = null;
@@ -3078,6 +3144,7 @@ async function send() {
   addUserMessage(text);
   promptEl.value = '';
   autoGrowPrompt();
+  resetApprovalAuto();
   sendEl.disabled = true;
   stopEl.disabled = false;
   controller = new AbortController();
@@ -3118,6 +3185,7 @@ async function send() {
   } catch (error) {
     if (error.name === 'AbortError') {
       add('meta', 'stopped');
+      resetApprovalAuto();
       setStatus('stopped');
     } else {
       add('error', String(error));
