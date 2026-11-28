@@ -209,6 +209,8 @@ body.sidebar-open { padding-left:350px; }
 .automation-review-row { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; padding:3px 0; }
 #automation-form { border-top:1px solid var(--border); margin-top:8px; padding-top:8px; display:flex; flex-direction:column; gap:6px; }
 #automation-form[hidden] { display:none; }
+.automation-label { color:var(--muted); font-size:11px; margin-bottom:-3px; }
+.automation-hint { color:var(--muted); font-size:11px; }
 #automation-form input, #automation-form select, #automation-form textarea { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:6px 7px; font-size:13px; }
 #automation-form textarea { min-height:70px; resize:vertical; }
 #automation-form-actions { display:flex; gap:5px; }
@@ -425,7 +427,9 @@ pre code.hljs { background:var(--code-bg); color:var(--code-text); }
     <div class="automation-review-row"><span>Weekly</span><span id="automation-weekly">0</span></div>
   </div>
   <form id="automation-form" hidden>
+    <label class="automation-label" for="automation-kind">Type</label>
     <select id="automation-kind"><option value="prompt">Prompt task</option><option value="health">System health</option></select>
+    <div id="automation-kind-hint" class="automation-hint" hidden>Runs local-harness-health directly; no prompt is needed.</div>
     <input id="automation-title" type="text" placeholder="Task title" required>
     <textarea id="automation-prompt" placeholder="Prompt to run" required></textarea>
     <select id="automation-frequency"><option value="daily">Daily</option><option value="weekly">Weekly</option></select>
@@ -506,6 +510,7 @@ const automationDaily = document.getElementById('automation-daily');
 const automationWeekly = document.getElementById('automation-weekly');
 const automationForm = document.getElementById('automation-form');
 const automationKind = document.getElementById('automation-kind');
+const automationKindHint = document.getElementById('automation-kind-hint');
 const automationTitle = document.getElementById('automation-title');
 const automationPrompt = document.getElementById('automation-prompt');
 const automationFrequency = document.getElementById('automation-frequency');
@@ -2795,6 +2800,7 @@ automationKind.addEventListener('change', () => {
   const health = automationKind.value === 'health';
   automationPrompt.hidden = health;
   automationPrompt.required = !health;
+  automationKindHint.hidden = !health;
   if (health && !automationTitle.value.trim()) automationTitle.value = 'Health Check';
 });
 document.querySelectorAll('.automation-tabs button').forEach((button) => {
